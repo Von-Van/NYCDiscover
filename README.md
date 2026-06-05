@@ -5,6 +5,7 @@ NYC Discover turns a free block of time into a small, practical same-day itinera
 ## Stack
 
 - `apps/web`: Next.js, React, Tailwind CSS, MapLibre
+- `apps/ios`: SwiftUI, MapKit, Core Location
 - `services/api`: FastAPI, Python
 - PostgreSQL: provider-response cache only
 
@@ -44,6 +45,25 @@ Fixture mode is enabled by default, so the complete input-to-itinerary flow work
 
 Open [http://localhost:3000](http://localhost:3000). The API docs are available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
+## iPhone App
+
+The native iPhone app lives at `apps/ios/NYCDiscover.xcodeproj`. It mirrors the browser MVP: location search/current location, same-day constraints, mood/transport/radius controls, itinerary generation, demo fallback, weather/warnings, plan switching, timeline details, and a MapKit route preview.
+
+To run it:
+
+```bash
+open apps/ios/NYCDiscover.xcodeproj
+```
+
+Choose the `NYCDiscover` scheme and an iPhone simulator in Xcode. The app points to `http://127.0.0.1:8000` by default, so start the FastAPI service first if you want live local results. When the API is offline, the app uses the same Upper West Side demo fallback behavior as the web version.
+
+For a physical iPhone, update `NYCDiscoverAPIURL` in `apps/ios/NYCDiscover/Resources/Info.plist` to your Mac's LAN URL and run the API bound to your network interface, for example:
+
+```bash
+cd services/api
+uvicorn app.main:app --reload --env-file ../../.env --host 0.0.0.0
+```
+
 ## Live Data
 
 Set `FIXTURE_MODE=false` to enable live providers.
@@ -66,6 +86,9 @@ npm test
 # Build and lint
 npm run build
 npm run lint
+
+# iPhone simulator build
+xcodebuild -project apps/ios/NYCDiscover.xcodeproj -scheme NYCDiscover -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath apps/ios/DerivedData build
 
 # Generate the TypeScript OpenAPI contract while the API is running
 npm run types:generate
