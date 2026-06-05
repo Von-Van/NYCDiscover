@@ -29,6 +29,7 @@ struct DiscoveryRootView: View {
 
 private struct AppHeader: View {
     @ObservedObject var viewModel: DiscoveryViewModel
+    @State private var showingSavedPlans = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -51,9 +52,33 @@ private struct AppHeader: View {
 
                 Spacer()
 
-                Text("VOL. 01")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppColor.muted)
+                HStack(spacing: 10) {
+                    Button {
+                        showingSavedPlans = true
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bookmark")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(AppColor.ink)
+                                .frame(width: 36, height: 34)
+                            if !viewModel.savedItineraries.isEmpty {
+                                Text("\(viewModel.savedItineraries.count)")
+                                    .font(.system(size: 9, weight: .black, design: .rounded))
+                                    .foregroundStyle(AppColor.paper)
+                                    .frame(minWidth: 16, minHeight: 16)
+                                    .background(AppColor.warm)
+                                    .clipShape(Circle())
+                                    .offset(x: 3, y: -3)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Saved plans")
+
+                    Text("VOL. 01")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppColor.muted)
+                }
             }
 
             HStack {
@@ -74,6 +99,9 @@ private struct AppHeader: View {
         .padding(.top, 14)
         .padding(.bottom, 12)
         .background(.ultraThinMaterial)
+        .sheet(isPresented: $showingSavedPlans) {
+            SavedPlansView(viewModel: viewModel)
+        }
     }
 }
 

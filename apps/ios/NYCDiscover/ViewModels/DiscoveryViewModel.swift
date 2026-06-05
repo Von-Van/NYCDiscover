@@ -15,14 +15,22 @@ final class DiscoveryViewModel: ObservableObject {
     @Published var message = ""
     @Published var errors: [String] = []
     @Published var seed = 0
+    @Published var savedItineraries: [SavedItinerary]
 
     private let apiClient: APIClient
     private let locationService: LocationService
+    private let savedItineraryStore: SavedItineraryStore
     private let fallbackCoordinates = Coordinates(latitude: 40.787, longitude: -73.9754)
 
-    init(apiClient: APIClient = APIClient(), locationService: LocationService? = nil) {
+    init(
+        apiClient: APIClient = APIClient(),
+        locationService: LocationService? = nil,
+        savedItineraryStore: SavedItineraryStore = SavedItineraryStore()
+    ) {
         self.apiClient = apiClient
         self.locationService = locationService ?? LocationService()
+        self.savedItineraryStore = savedItineraryStore
+        self.savedItineraries = savedItineraryStore.load()
     }
 
     var activePlan: ItineraryPlan? {
@@ -31,6 +39,19 @@ final class DiscoveryViewModel: ObservableObject {
 
     var formattedToday: String {
         Date().formatted(date: .complete, time: .omitted)
+    }
+
+    var isActivePlanSaved: Bool {
+        guard let response, let activePlan else {
+            return false
+        }
+        return savedItineraries.contains {
+            $0.id == SavedItinerary.makeId(
+                response: response,
+                selectedPlanId: activePlan.id,
+                originLabel: form.locationLabel
+            )
+        }
     }
 
     func showForm() {
@@ -89,6 +110,49 @@ final class DiscoveryViewModel: ObservableObject {
         let nextSeed = seed + 1
         seed = nextSeed
         await runGeneration(nextSeed: nextSeed)
+    }
+
+    func saveActivePlan() {
+        guard let response, let activePlan else {
+            return
+        }
+        let itinerary = SavedItinerary(
+            response: response,
+            selectedPlanId: activePlan.id,
+            formSnapshot: form,
+            originLabel: form.locationLabel
+        )
+        savedItineraries = savedItineraryStore.save(itinerary)
+        message = "Plan saved."
+    }
+
+    func deleteSavedItinerary(_ itinerary: SavedItinerary) {
+        savedItineraries = savedItineraryStore.delete(id: itinerary.id)
+    }
+
+    func restoreSavedItinerary(_ itinerary: SavedItinerary) {
+        form = itinerary.formSnapshot
+        response = itinerary.response
+        activePlanId = itinerary.selectedPlan?.id ?? itinerary.response.plans.first?.id ?? itinerary.selectedPlanId
+        message = ""
+        errors = []
+        phase = .results
+    }
+
+    func shareSummary(for plan: ItineraryPlan) -> String {
+        guard let response else {
+            return ""
+        }
+        return ItineraryShareFormatter.summary(
+            response: response,
+            plan: plan,
+            form: form,
+            originLabel: form.locationLabel
+        )
+    }
+
+    func openInMaps(step: TimelineStep) {
+        MapsLauncher.open(step: step, transportMode: form.transportMode)
     }
 
     private func runGeneration(nextSeed: Int) async {

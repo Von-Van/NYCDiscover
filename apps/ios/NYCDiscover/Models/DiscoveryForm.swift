@@ -1,6 +1,6 @@
 import Foundation
 
-enum StartMode: String, CaseIterable, Identifiable {
+enum StartMode: String, Codable, CaseIterable, Identifiable {
     case now
     case later
 
@@ -14,7 +14,7 @@ enum StartMode: String, CaseIterable, Identifiable {
     }
 }
 
-struct DiscoveryForm: Equatable {
+struct DiscoveryForm: Codable, Equatable {
     var locationLabel = ""
     var coordinates: Coordinates?
     var startMode: StartMode = .now

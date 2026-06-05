@@ -61,6 +61,32 @@ struct ResultsView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(AppColor.accent)
             }
+
+            if let activePlan = viewModel.activePlan {
+                HStack(spacing: 10) {
+                    Button {
+                        viewModel.saveActivePlan()
+                    } label: {
+                        Label(
+                            viewModel.isActivePlanSaved ? "Saved" : "Save",
+                            systemImage: viewModel.isActivePlanSaved ? "bookmark.fill" : "bookmark"
+                        )
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppColor.accent)
+                    .disabled(viewModel.isActivePlanSaved)
+
+                    ShareLink(item: viewModel.shareSummary(for: activePlan)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.bold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppColor.ink)
+                }
+            }
         }
     }
 
@@ -296,6 +322,15 @@ struct ResultsView: View {
                             Text("$\(step.costLow)-$\(step.costHigh) - \(confidenceLabel(step.confidence))")
                                 .font(.subheadline)
                                 .foregroundStyle(AppColor.muted)
+
+                            Button {
+                                viewModel.openInMaps(step: step)
+                            } label: {
+                                Label("Open in Maps", systemImage: "map")
+                                    .font(.subheadline.weight(.bold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(AppColor.accent)
 
                             DisclosureGroup("What to verify") {
                                 VStack(alignment: .leading, spacing: 8) {

@@ -19,6 +19,12 @@
 		10000000000000000000000A /* ResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ResultsView.swift */; };
 		10000000000000000000000B /* ItineraryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* ItineraryMapView.swift */; };
 		10000000000000000000000C /* DiscoveryFormTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* DiscoveryFormTests.swift */; };
+		10000000000000000000000D /* SavedItinerary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* SavedItinerary.swift */; };
+		10000000000000000000000E /* SavedItineraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* SavedItineraryStore.swift */; };
+		10000000000000000000000F /* ItineraryShareFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* ItineraryShareFormatter.swift */; };
+		100000000000000000000010 /* MapsLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* MapsLauncher.swift */; };
+		100000000000000000000011 /* SavedPlansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* SavedPlansView.swift */; };
+		100000000000000000000012 /* UsefulnessPackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* UsefulnessPackTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +53,12 @@
 		20000000000000000000000D /* DiscoveryFormTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryFormTests.swift; sourceTree = "<group>"; };
 		20000000000000000000000E /* NYCDiscover.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NYCDiscover.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000F /* NYCDiscoverTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NYCDiscoverTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000010 /* SavedItinerary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedItinerary.swift; sourceTree = "<group>"; };
+		200000000000000000000011 /* SavedItineraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedItineraryStore.swift; sourceTree = "<group>"; };
+		200000000000000000000012 /* ItineraryShareFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItineraryShareFormatter.swift; sourceTree = "<group>"; };
+		200000000000000000000013 /* MapsLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapsLauncher.swift; sourceTree = "<group>"; };
+		200000000000000000000014 /* SavedPlansView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlansView.swift; sourceTree = "<group>"; };
+		200000000000000000000015 /* UsefulnessPackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsefulnessPackTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,6 +106,7 @@
 			children = (
 				200000000000000000000002 /* DiscoveryModels.swift */,
 				200000000000000000000003 /* DiscoveryForm.swift */,
+				200000000000000000000010 /* SavedItinerary.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -103,7 +116,10 @@
 			children = (
 				200000000000000000000004 /* APIClient.swift */,
 				200000000000000000000005 /* DemoData.swift */,
+				200000000000000000000012 /* ItineraryShareFormatter.swift */,
 				200000000000000000000006 /* LocationService.swift */,
+				200000000000000000000013 /* MapsLauncher.swift */,
+				200000000000000000000011 /* SavedItineraryStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -123,6 +139,7 @@
 				200000000000000000000009 /* PlannerView.swift */,
 				20000000000000000000000A /* ResultsView.swift */,
 				20000000000000000000000B /* ItineraryMapView.swift */,
+				200000000000000000000014 /* SavedPlansView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -139,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				20000000000000000000000D /* DiscoveryFormTests.swift */,
+				200000000000000000000015 /* UsefulnessPackTests.swift */,
 			);
 			path = NYCDiscoverTests;
 			sourceTree = "<group>";
@@ -253,14 +271,19 @@
 				100000000000000000000001 /* NYCDiscoverApp.swift in Sources */,
 				100000000000000000000002 /* DiscoveryModels.swift in Sources */,
 				100000000000000000000003 /* DiscoveryForm.swift in Sources */,
+				10000000000000000000000D /* SavedItinerary.swift in Sources */,
 				100000000000000000000004 /* APIClient.swift in Sources */,
 				100000000000000000000005 /* DemoData.swift in Sources */,
+				10000000000000000000000F /* ItineraryShareFormatter.swift in Sources */,
 				100000000000000000000006 /* LocationService.swift in Sources */,
+				100000000000000000000010 /* MapsLauncher.swift in Sources */,
+				10000000000000000000000E /* SavedItineraryStore.swift in Sources */,
 				100000000000000000000007 /* DiscoveryViewModel.swift in Sources */,
 				100000000000000000000008 /* DiscoveryRootView.swift in Sources */,
 				100000000000000000000009 /* PlannerView.swift in Sources */,
 				10000000000000000000000A /* ResultsView.swift in Sources */,
 				10000000000000000000000B /* ItineraryMapView.swift in Sources */,
+				100000000000000000000011 /* SavedPlansView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,6 +292,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				10000000000000000000000C /* DiscoveryFormTests.swift in Sources */,
+				100000000000000000000012 /* UsefulnessPackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
