@@ -4,7 +4,6 @@ import { FormEvent, useMemo, useState } from "react";
 import { generateItineraries, geocodeLocation } from "@/lib/api";
 import type {
   GenerationResponse,
-  ItineraryPlan,
   Mood,
   TransportMode,
 } from "@/lib/api-types";
