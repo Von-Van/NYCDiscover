@@ -10,6 +10,50 @@ NYC Discover turns a free block of time into a small, practical same-day itinera
 
 Fixture mode is enabled by default, so the complete input-to-itinerary flow works without API keys or live network calls.
 
+## Branch Layout
+
+- `main` owns the desktop web app and shared FastAPI service.
+- `ios` owns the native SwiftUI app used for iPhone simulator and device testing.
+- `mobile` is the legacy branch name and should not receive new work.
+
+The clients use the same planning model and API contract, while each branch can evolve and be tested without mixing platform build artifacts into the other.
+
+## How It Works
+
+```mermaid
+flowchart TD
+    Start["Open NYC Discover"] --> Client{"Choose a client"}
+    Client -->|Desktop| Web["Desktop web planner"]
+    Client -->|iPhone| IOS["SwiftUI planner on the ios branch"]
+
+    Web --> Brief["Enter NYC location, time, budget, group, transport, and mood"]
+    IOS --> Brief
+    Brief --> Location{"Location resolved in NYC?"}
+    Location -->|No| Fix["Ask for another location or use the labeled demo origin"]
+    Fix --> Brief
+    Location -->|Yes| Request["Send itinerary generation request"]
+
+    Request --> Reachable{"FastAPI reachable?"}
+    Reachable -->|No| Demo["Client returns the Upper West Side demo plans"]
+    Reachable -->|Yes| Validate["Validate same-day constraints"]
+    Validate --> Mode{"Fixture mode enabled?"}
+    Mode -->|Yes| Fixtures["Load deterministic fixture places, events, and weather"]
+    Mode -->|No| Providers["Query place, event, and weather providers"]
+    Providers <--> Cache[("PostgreSQL provider cache")]
+
+    Fixtures --> Engine["Filter candidates and build bounded itineraries"]
+    Cache --> Engine
+    Engine --> Fit{"At least one honest fit?"}
+    Fit -->|No| Empty["Return warnings and an adjustable empty state"]
+    Empty --> Brief
+    Fit -->|Yes| Plans["Return ranked plans with cost, time, confidence, and sources"]
+    Demo --> Results["Compare plan tabs, timeline stops, and map markers"]
+    Plans --> Results
+    Results --> Revise{"Change the brief or regenerate?"}
+    Revise -->|Yes| Brief
+    Revise -->|No| Verify["Verify estimates and open navigation before leaving"]
+```
+
 ## Quick Start
 
 1. Copy the environment file:
@@ -37,7 +81,7 @@ Fixture mode is enabled by default, so the complete input-to-itinerary flow work
 4. Start the web app in a second terminal:
 
    ```bash
-   npm install
+   npm ci
    set -a; source .env; set +a
    npm run dev
    ```

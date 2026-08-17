@@ -14,3 +14,10 @@ test-results/
 
 postgres-data/
 
+# iOS / Xcode artifacts may appear locally when switching to the ios branch.
+apps/ios/DerivedData/
+apps/ios/build/
+apps/ios/.swiftpm/
+xcuserdata/
+*.xcuserstate
+*.xcresult
