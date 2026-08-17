@@ -5,7 +5,20 @@ import type { GenerateRequest } from "@/lib/api-types";
 import { DiscoveryApp } from "./DiscoveryApp";
 
 vi.mock("./ItineraryMap", () => ({
-  ItineraryMap: () => <div aria-label="Itinerary map" />,
+  ItineraryMap: ({
+    activeStepId,
+    onStepPreview,
+    onStepSelect,
+  }: {
+    activeStepId?: string | null;
+    onStepPreview?: (stepId: string | null) => void;
+    onStepSelect?: (stepId: string) => void;
+  }) => (
+    <div aria-label="Itinerary map" data-active-step={activeStepId ?? ""}>
+      <button onMouseEnter={() => onStepPreview?.("demo-dessert")}>Preview dessert marker</button>
+      <button onClick={() => onStepSelect?.("demo-dessert")}>Select dessert marker</button>
+    </div>
+  ),
 }));
 
 const request: GenerateRequest = {
@@ -25,7 +38,41 @@ const request: GenerateRequest = {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
+
+function createSuccessfulFetch() {
+  return vi.fn((input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).includes("/v1/geocode")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            results: [{ label: "Upper West Side, New York, NY", latitude: 40.787, longitude: -73.9754 }],
+            warnings: [],
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    const submittedRequest = JSON.parse(String(init?.body)) as GenerateRequest;
+    return Promise.resolve(
+      new Response(JSON.stringify(buildDemoResponse(submittedRequest)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+}
+
+async function generatePlan() {
+  fireEvent.change(screen.getByLabelText("Neighborhood, landmark, or address"), {
+    target: { value: "Upper West Side" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Set" }));
+  await screen.findByText("Starting point set.");
+  fireEvent.click(screen.getByRole("button", { name: /Make my plan/ }));
+  await screen.findByRole("heading", { name: "Here’s your way out the door." });
+}
 
 describe("DiscoveryApp", () => {
   it("shows form validation without making a request", () => {
@@ -90,5 +137,88 @@ describe("DiscoveryApp", () => {
     expect(screen.getAllByText("What to verify").length).toBeGreaterThan(0);
     expect(screen.getByText("NOT TURN-BY-TURN")).toBeVisible();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("discards unsubmitted inspector edits and keeps result facts committed", async () => {
+    vi.stubGlobal("fetch", createSuccessfulFetch());
+    render(<DiscoveryApp />);
+    await generatePlan();
+
+    const travelFact = screen.getByText("Travel").closest("div");
+    expect(travelFact).toHaveTextContent("walk");
+    fireEvent.click(screen.getByRole("button", { name: "Change the brief" }));
+    fireEvent.click(screen.getByRole("button", { name: "transit" }));
+    expect(travelFact).toHaveTextContent("walk");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change the brief" }));
+    expect(screen.getByRole("button", { name: "walk" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "transit" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("commits inspector edits only after a successful update", async () => {
+    const fetchMock = createSuccessfulFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DiscoveryApp />);
+    await generatePlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change the brief" }));
+    fireEvent.click(screen.getByRole("button", { name: "transit" }));
+    fireEvent.change(screen.getByLabelText("Maximum per-person budget"), {
+      target: { value: "60" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Update plans/ }));
+
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "The brief" })).not.toBeInTheDocument());
+    expect(screen.getByText("Travel").closest("div")).toHaveTextContent("transit");
+    const generationCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/v1/itineraries/generate"),
+    );
+    const lastRequest = JSON.parse(String(generationCalls.at(-1)?.[1]?.body)) as GenerateRequest;
+    expect(lastRequest.transport_mode).toBe("transit");
+    expect(lastRequest.budget_max).toBe(60);
+  });
+
+  it("preserves the visible itinerary when an inspector update fails", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMO_FALLBACK", "false");
+    let generationCount = 0;
+    const fetchMock = createSuccessfulFetch();
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes("/v1/itineraries/generate")) {
+        generationCount += 1;
+        if (generationCount > 1) return Promise.reject(new Error("API down"));
+      }
+      return fetchMock(input, init);
+    }));
+    render(<DiscoveryApp />);
+    await generatePlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change the brief" }));
+    fireEvent.click(screen.getByRole("button", { name: "transit" }));
+    fireEvent.click(screen.getByRole("button", { name: /Update plans/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("API down");
+    expect(screen.getByRole("heading", { name: "The brief" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Trivia + Dessert" })).toBeVisible();
+    expect(screen.getByText("Travel").closest("div")).toHaveTextContent("walk");
+  });
+
+  it("synchronizes map preview and selection with the timeline", async () => {
+    vi.stubGlobal("fetch", createSuccessfulFetch());
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    render(<DiscoveryApp />);
+    await generatePlan();
+
+    const secondStop = screen.getByRole("button", { name: /Show stop 2/ }).closest("li");
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Preview dessert marker" }));
+    expect(secondStop).toHaveClass("active");
+    fireEvent.click(screen.getByRole("button", { name: "Select dessert marker" }));
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(secondStop).toHaveClass("active");
   });
 });

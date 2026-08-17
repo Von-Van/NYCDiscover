@@ -1,19 +1,85 @@
 "use client";
 
-import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
+import maplibregl, { type Map as MapLibreMap, type Marker, type Popup } from "maplibre-gl";
 import { useEffect, useRef } from "react";
 import type { ItineraryPlan } from "@/lib/api-types";
 
 interface ItineraryMapProps {
   plan: ItineraryPlan;
+  activeStepId?: string | null;
+  selectedStepId?: string | null;
+  onStepPreview?: (stepId: string | null) => void;
+  onStepSelect?: (stepId: string) => void;
 }
 
-export function ItineraryMap({ plan }: ItineraryMapProps) {
+interface MarkerEntry {
+  element: HTMLButtonElement;
+  marker: Marker;
+  popup: Popup;
+}
+
+export function ItineraryMap({
+  plan,
+  activeStepId = null,
+  selectedStepId = null,
+  onStepPreview,
+  onStepSelect,
+}: ItineraryMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const markersRef = useRef(new Map<string, MarkerEntry>());
+  const activeStepRef = useRef(activeStepId);
+  const selectedStepRef = useRef(selectedStepId);
+  const previewCallbackRef = useRef(onStepPreview);
+  const selectCallbackRef = useRef(onStepSelect);
+
+  useEffect(() => {
+    previewCallbackRef.current = onStepPreview;
+  }, [onStepPreview]);
+
+  useEffect(() => {
+    selectCallbackRef.current = onStepSelect;
+  }, [onStepSelect]);
+
+  useEffect(() => {
+    activeStepRef.current = activeStepId;
+    selectedStepRef.current = selectedStepId;
+  }, [activeStepId, selectedStepId]);
+
+  useEffect(() => {
+    for (const [stepId, entry] of markersRef.current) {
+      entry.element.classList.toggle("active", stepId === activeStepId);
+      entry.element.classList.toggle("selected", stepId === selectedStepId);
+      entry.element.setAttribute("aria-pressed", String(stepId === selectedStepId));
+    }
+  }, [activeStepId, selectedStepId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    for (const entry of markersRef.current.values()) entry.popup.remove();
+    if (!selectedStepId) return;
+
+    const entry = markersRef.current.get(selectedStepId);
+    const step = plan.steps.find((candidate) => candidate.candidate_id === selectedStepId);
+    if (!entry || !step) return;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    map.easeTo({
+      center: [step.coordinates.longitude, step.coordinates.latitude],
+      zoom: Math.max(map.getZoom(), 14),
+      duration: reducedMotion ? 0 : 450,
+    });
+    entry.popup
+      .setLngLat([step.coordinates.longitude, step.coordinates.latitude])
+      .addTo(map);
+  }, [plan, selectedStepId]);
 
   useEffect(() => {
     if (!containerRef.current || plan.steps.length === 0) return;
+    const markers = new Map<string, MarkerEntry>();
+    markersRef.current = markers;
     const first = plan.steps[0].coordinates;
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -45,44 +111,64 @@ export function ItineraryMap({ plan }: ItineraryMapProps) {
         step.coordinates.longitude,
         step.coordinates.latitude,
       ]);
-      map.addSource("route", {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          properties: {},
-          geometry: { type: "LineString", coordinates },
-        },
-      });
-      map.addLayer({
-        id: "route-shadow",
-        type: "line",
-        source: "route",
-        paint: { "line-color": "#f5efe0", "line-width": 9, "line-opacity": 0.9 },
-      });
-      map.addLayer({
-        id: "route",
-        type: "line",
-        source: "route",
-        paint: {
-          "line-color": "#d62f26",
-          "line-width": 4,
-          "line-dasharray": [1, 1.2],
-        },
-      });
+
+      if (coordinates.length > 1) {
+        map.addSource("route", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            properties: {},
+            geometry: { type: "LineString", coordinates },
+          },
+        });
+        map.addLayer({
+          id: "route-shadow",
+          type: "line",
+          source: "route",
+          paint: { "line-color": "#f5efe0", "line-width": 9, "line-opacity": 0.9 },
+        });
+        map.addLayer({
+          id: "route",
+          type: "line",
+          source: "route",
+          paint: {
+            "line-color": "#d62f26",
+            "line-width": 4,
+            "line-dasharray": [1, 1.2],
+          },
+        });
+      }
+
       const bounds = new maplibregl.LngLatBounds();
       plan.steps.forEach((step, index) => {
-        const element = document.createElement("div");
+        const element = document.createElement("button");
+        element.type = "button";
         element.className = "map-pin";
         element.textContent = String(index + 1);
-        new maplibregl.Marker({ element })
+        element.setAttribute("aria-label", `Stop ${index + 1}: ${step.name}`);
+        element.setAttribute("aria-pressed", "false");
+        element.addEventListener("mouseenter", () => previewCallbackRef.current?.(step.candidate_id));
+        element.addEventListener("mouseleave", () => previewCallbackRef.current?.(null));
+        element.addEventListener("focus", () => previewCallbackRef.current?.(step.candidate_id));
+        element.addEventListener("blur", () => previewCallbackRef.current?.(null));
+        element.addEventListener("click", () => selectCallbackRef.current?.(step.candidate_id));
+
+        const marker = new maplibregl.Marker({ element })
           .setLngLat([step.coordinates.longitude, step.coordinates.latitude])
-          .setPopup(new maplibregl.Popup({ offset: 18 }).setText(step.name))
           .addTo(map);
+        const popup = new maplibregl.Popup({ offset: 18, closeOnClick: false }).setText(step.name);
+        markers.set(step.candidate_id, { element, marker, popup });
         bounds.extend([step.coordinates.longitude, step.coordinates.latitude]);
       });
+
+      for (const [stepId, entry] of markers) {
+        entry.element.classList.toggle("active", stepId === activeStepRef.current);
+        entry.element.classList.toggle("selected", stepId === selectedStepRef.current);
+        entry.element.setAttribute("aria-pressed", String(stepId === selectedStepRef.current));
+      }
       if (plan.steps.length > 1) map.fitBounds(bounds, { padding: 65, maxZoom: 14 });
 
-      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches && coordinates.length > 1) {
         const patterns = [
           [1, 1.2],
           [0.8, 1.4],
@@ -101,8 +187,11 @@ export function ItineraryMap({ plan }: ItineraryMapProps) {
     });
 
     return () => {
-      const source = map.getSource("route") as GeoJSONSource | undefined;
-      if (source) source.setData({ type: "FeatureCollection", features: [] });
+      for (const entry of markers.values()) {
+        entry.popup.remove();
+        entry.marker.remove();
+      }
+      markers.clear();
       map.remove();
       mapRef.current = null;
     };
@@ -118,4 +207,3 @@ export function ItineraryMap({ plan }: ItineraryMapProps) {
     </div>
   );
 }
-

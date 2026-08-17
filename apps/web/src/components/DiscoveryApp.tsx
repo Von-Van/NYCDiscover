@@ -1,49 +1,22 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { generateItineraries, geocodeLocation } from "@/lib/api";
-import type {
-  GenerationResponse,
-  Mood,
-  TransportMode,
-} from "@/lib/api-types";
+import type { GenerationResponse } from "@/lib/api-types";
 import { buildDemoResponse } from "@/lib/demo-data";
 import { toGenerateRequest, validateForm, type DiscoveryForm } from "@/lib/form";
+import { getPlanComparisonLabels } from "@/lib/plan-comparison";
+import { BriefFields, initialDiscoveryForm } from "./BriefFields";
 import { ItineraryMap } from "./ItineraryMap";
 
-const moods: Array<{ value: Mood; label: string; mark: string }> = [
-  { value: "social", label: "Social", mark: "S" },
-  { value: "relaxing", label: "Relaxing", mark: "R" },
-  { value: "outdoors", label: "Outdoors", mark: "O" },
-  { value: "date-night", label: "Date night", mark: "D" },
-  { value: "productive", label: "Productive", mark: "P" },
-  { value: "chaotic", label: "Chaotic", mark: "!" },
-  { value: "low-energy", label: "Low energy", mark: "L" },
-  { value: "cultural", label: "Cultural", mark: "C" },
-  { value: "food-focused", label: "Food-focused", mark: "F" },
-];
-
-const durations = [
-  [90, "1½ hours"],
-  [120, "2 hours"],
-  [180, "3 hours"],
-  [240, "4 hours"],
-  [360, "6 hours"],
-] as const;
-
 const fallbackCoordinates = { latitude: 40.787, longitude: -73.9754 };
-const initialForm: DiscoveryForm = {
-  locationLabel: "",
-  coordinates: null,
-  startMode: "now",
-  laterTime: "19:00",
-  availableMinutes: 240,
-  budgetMax: 40,
-  groupSize: 2,
-  transportMode: "walk",
-  radiusMiles: 2,
-  mood: "social",
-};
+
+function copyForm(form: DiscoveryForm): DiscoveryForm {
+  return {
+    ...form,
+    coordinates: form.coordinates ? { ...form.coordinates } : null,
+  };
+}
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(
@@ -63,21 +36,72 @@ function confidenceLabel(confidence: number) {
   return "Worth verifying";
 }
 
+type GenerationMode = "initial" | "update" | "regenerate";
+
 export function DiscoveryApp() {
-  const [form, setForm] = useState<DiscoveryForm>(initialForm);
+  const [draftForm, setDraftForm] = useState<DiscoveryForm>(() => copyForm(initialDiscoveryForm));
+  const [committedForm, setCommittedForm] = useState<DiscoveryForm | null>(null);
   const [phase, setPhase] = useState<"form" | "loading" | "results">("form");
   const [response, setResponse] = useState<GenerationResponse | null>(null);
   const [activePlanId, setActivePlanId] = useState("plan-1");
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [seed, setSeed] = useState(0);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [previewStepId, setPreviewStepId] = useState<string | null>(null);
+  const timelineRefs = useRef<Record<string, HTMLLIElement | null>>({});
+
   const activePlan = useMemo(
     () => response?.plans.find((plan) => plan.id === activePlanId) ?? response?.plans[0],
     [activePlanId, response],
   );
+  const planLabels = useMemo(
+    () => getPlanComparisonLabels(response?.plans ?? []),
+    [response],
+  );
+  const displayForm = committedForm ?? draftForm;
+  const activeStepId = previewStepId ?? selectedStepId;
+
+  useEffect(() => {
+    if (!inspectorOpen) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setDraftForm(copyForm(committedForm ?? initialDiscoveryForm));
+      setErrors([]);
+      setMessage("");
+      setInspectorOpen(false);
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [committedForm, inspectorOpen]);
 
   function update<K extends keyof DiscoveryForm>(key: K, value: DiscoveryForm[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setDraftForm((current) => ({ ...current, [key]: value }));
+    setErrors([]);
+  }
+
+  function openInspector() {
+    setDraftForm(copyForm(committedForm ?? draftForm));
+    setErrors([]);
+    setMessage("");
+    setInspectorOpen(true);
+  }
+
+  function closeInspector() {
+    setDraftForm(copyForm(committedForm ?? initialDiscoveryForm));
+    setErrors([]);
+    setMessage("");
+    setInspectorOpen(false);
+  }
+
+  function returnToForm() {
+    setDraftForm(copyForm(committedForm ?? draftForm));
+    setInspectorOpen(false);
+    setErrors([]);
+    setMessage("");
+    setPhase("form");
   }
 
   async function locateMe() {
@@ -99,13 +123,10 @@ export function DiscoveryApp() {
           setMessage("Your current location is outside NYC. Search for a city starting point instead.");
           return;
         }
-        setForm((current) => ({
+        setDraftForm((current) => ({
           ...current,
           locationLabel: "Current location",
-          coordinates: {
-            latitude,
-            longitude,
-          },
+          coordinates: { latitude, longitude },
         }));
         setMessage("Starting from your current location.");
       },
@@ -115,66 +136,108 @@ export function DiscoveryApp() {
   }
 
   async function resolveLocation() {
-    if (form.locationLabel.trim().length < 3) {
+    if (draftForm.locationLabel.trim().length < 3) {
       setMessage("Enter at least three characters.");
       return;
     }
     setMessage("Finding that spot in NYC…");
     try {
-      const result = await geocodeLocation(form.locationLabel.trim());
+      const result = await geocodeLocation(draftForm.locationLabel.trim());
       const first = result.results[0];
       if (!first) throw new Error("No NYC location matched that search.");
-      setForm((current) => ({
+      setDraftForm((current) => ({
         ...current,
         locationLabel: first.label,
         coordinates: { latitude: first.latitude, longitude: first.longitude },
       }));
       setMessage("Starting point set.");
     } catch {
-      setForm((current) => ({ ...current, coordinates: fallbackCoordinates }));
+      setDraftForm((current) => ({ ...current, coordinates: fallbackCoordinates }));
       setMessage("Using the Upper West Side demo starting point while the API is offline.");
     }
   }
 
-  async function runGeneration(nextSeed = seed) {
+  async function runGeneration(form: DiscoveryForm, nextSeed: number, mode: GenerationMode) {
     const formErrors = validateForm(form);
     setErrors(formErrors);
-    if (formErrors.length > 0) return;
+    if (formErrors.length > 0) return false;
+
     const request = toGenerateRequest(form, nextSeed);
-    setPhase("loading");
+    if (mode === "initial") setPhase("loading");
+    else setIsUpdating(true);
     setMessage("");
+
     try {
-      const result = await generateItineraries(request);
-      setResponse(result);
-      setActivePlanId(result.plans[0]?.id ?? "");
-    } catch (error) {
-      if (process.env.NEXT_PUBLIC_DEMO_FALLBACK === "false") {
-        setErrors([error instanceof Error ? error.message : "Itinerary generation failed."]);
-        setPhase("form");
-        return;
+      let result: GenerationResponse;
+      try {
+        result = await generateItineraries(request);
+      } catch (error) {
+        if (process.env.NEXT_PUBLIC_DEMO_FALLBACK === "false") throw error;
+        result = buildDemoResponse(request);
       }
-      const result = buildDemoResponse(request);
+
+      const committed = copyForm(form);
       setResponse(result);
+      setCommittedForm(committed);
+      setDraftForm(copyForm(committed));
       setActivePlanId(result.plans[0]?.id ?? "");
+      setSelectedStepId(null);
+      setPreviewStepId(null);
+      setInspectorOpen(false);
+      setErrors([]);
+      setPhase("results");
+      return true;
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : "Itinerary generation failed."]);
+      if (mode === "initial") setPhase("form");
+      if (mode === "update") setInspectorOpen(true);
+      return false;
+    } finally {
+      if (mode !== "initial") setIsUpdating(false);
     }
-    setPhase("results");
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await runGeneration(seed);
+    await runGeneration(draftForm, seed, "initial");
+  }
+
+  async function updatePlans(event: FormEvent) {
+    event.preventDefault();
+    await runGeneration(draftForm, seed, "update");
   }
 
   async function regenerate() {
+    if (!committedForm) return;
     const nextSeed = seed + 1;
     setSeed(nextSeed);
-    await runGeneration(nextSeed);
+    await runGeneration(committedForm, nextSeed, "regenerate");
+  }
+
+  function selectTimelineStep(stepId: string) {
+    setSelectedStepId(stepId);
+    setPreviewStepId(null);
+  }
+
+  function activatePlan(planId: string) {
+    setActivePlanId(planId);
+    setSelectedStepId(null);
+    setPreviewStepId(null);
+  }
+
+  function selectMapStep(stepId: string) {
+    setSelectedStepId(stepId);
+    setPreviewStepId(null);
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+    timelineRefs.current[stepId]?.scrollIntoView({ behavior, block: "center" });
   }
 
   return (
     <main className="site-shell">
       <header className="masthead">
-        <button className="brand" onClick={() => setPhase("form")} aria-label="NYC Discover home">
+        <button className="brand" onClick={returnToForm} aria-label="NYC Discover home">
           <span className="brand-box">NYC</span>
           <span>DISCOVER</span>
         </button>
@@ -212,179 +275,22 @@ export function DiscoveryApp() {
               <span>THE BRIEF</span>
               <strong>Tell us what kind of day this is.</strong>
             </div>
-
-            <fieldset className="form-section location-section">
-              <legend>
-                <span>1</span> Start here
-              </legend>
-              <label htmlFor="location">Neighborhood, landmark, or address</label>
-              <div className="location-row">
-                <input
-                  id="location"
-                  value={form.locationLabel}
-                  onChange={(event) => {
-                    update("locationLabel", event.target.value);
-                    update("coordinates", null);
-                  }}
-                  placeholder="Try “Upper West Side”"
-                  autoComplete="street-address"
-                />
-                <button type="button" className="square-button" onClick={resolveLocation}>
-                  Set
-                </button>
-              </div>
-              <button type="button" className="text-button" onClick={locateMe}>
-                <span className="crosshair" aria-hidden="true">⌖</span> Use my current location
+            <BriefFields
+              form={draftForm}
+              message={message}
+              errors={errors}
+              onLocateMe={locateMe}
+              onResolveLocation={resolveLocation}
+              onUpdate={update}
+            />
+            <div className="planner-submit-bar">
+              <button className="generate-button" type="submit">
+                Make my plan <span aria-hidden="true">→</span>
               </button>
-              {message && <p className="form-message" role="status">{message}</p>}
-            </fieldset>
-
-            <div className="form-grid">
-              <fieldset className="form-section">
-                <legend>
-                  <span>2</span> Start time
-                </legend>
-                <div className="segmented">
-                  {(["now", "later"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={form.startMode === mode ? "active" : ""}
-                      onClick={() => update("startMode", mode)}
-                    >
-                      {mode === "now" ? "Now" : "Later today"}
-                    </button>
-                  ))}
-                </div>
-                {form.startMode === "later" && (
-                  <input
-                    aria-label="Start time"
-                    type="time"
-                    value={form.laterTime}
-                    onChange={(event) => update("laterTime", event.target.value)}
-                  />
-                )}
-              </fieldset>
-
-              <fieldset className="form-section">
-                <legend>
-                  <span>3</span> Time available
-                </legend>
-                <select
-                  aria-label="Time available"
-                  value={form.availableMinutes}
-                  onChange={(event) => update("availableMinutes", Number(event.target.value))}
-                >
-                  {durations.map(([value, label]) => (
-                    <option value={value} key={value}>{label}</option>
-                  ))}
-                </select>
-              </fieldset>
+              <p className="fine-print">
+                Same-day plans only. Prices and travel times are estimates; verify before leaving.
+              </p>
             </div>
-
-            <div className="form-grid">
-              <fieldset className="form-section">
-                <legend>
-                  <span>4</span> Per-person budget
-                </legend>
-                <div className="range-readout">
-                  <span>$0</span>
-                  <strong>${form.budgetMax}</strong>
-                </div>
-                <input
-                  aria-label="Maximum per-person budget"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={form.budgetMax}
-                  onChange={(event) => update("budgetMax", Number(event.target.value))}
-                />
-              </fieldset>
-
-              <fieldset className="form-section">
-                <legend>
-                  <span>5</span> Group size
-                </legend>
-                <div className="stepper">
-                  <button
-                    type="button"
-                    aria-label="Decrease group size"
-                    onClick={() => update("groupSize", Math.max(1, form.groupSize - 1))}
-                  >−</button>
-                  <strong>{form.groupSize}</strong>
-                  <button
-                    type="button"
-                    aria-label="Increase group size"
-                    onClick={() => update("groupSize", Math.min(12, form.groupSize + 1))}
-                  >+</button>
-                </div>
-              </fieldset>
-            </div>
-
-            <fieldset className="form-section">
-              <legend>
-                <span>6</span> How are you moving?
-              </legend>
-              <div className="transport-row">
-                {(["walk", "bike", "transit"] as TransportMode[]).map((mode) => (
-                  <button
-                    type="button"
-                    key={mode}
-                    className={form.transportMode === mode ? "active" : ""}
-                    onClick={() => update("transportMode", mode)}
-                  >
-                    <i aria-hidden="true">{mode === "walk" ? "↟" : mode === "bike" ? "◎" : "M"}</i>
-                    {mode}
-                  </button>
-                ))}
-                <label className="radius-control">
-                  <span>Radius</span>
-                  <select
-                    value={form.radiusMiles}
-                    onChange={(event) => update("radiusMiles", Number(event.target.value))}
-                  >
-                    <option value="1">1 mi</option>
-                    <option value="2">2 mi</option>
-                    <option value="3">3 mi</option>
-                    <option value="5">5 mi</option>
-                  </select>
-                </label>
-              </div>
-            </fieldset>
-
-            <fieldset className="form-section mood-section">
-              <legend>
-                <span>7</span> Pick the mood
-              </legend>
-              <div className="mood-grid">
-                {moods.map((mood) => (
-                  <button
-                    type="button"
-                    key={mood.value}
-                    className={form.mood === mood.value ? "active" : ""}
-                    aria-pressed={form.mood === mood.value}
-                    onClick={() => update("mood", mood.value)}
-                  >
-                    <span aria-hidden="true">{mood.mark}</span>
-                    {mood.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            {errors.length > 0 && (
-              <div className="error-box" role="alert">
-                {errors.map((error) => <p key={error}>{error}</p>)}
-              </div>
-            )}
-
-            <button className="generate-button" type="submit">
-              Make my plan <span aria-hidden="true">→</span>
-            </button>
-            <p className="fine-print">
-              Same-day plans only. Prices and travel times are estimates; verify before leaving.
-            </p>
           </form>
         </section>
       )}
@@ -399,119 +305,210 @@ export function DiscoveryApp() {
       )}
 
       {phase === "results" && response && (
-        <section className="results-section">
-          <div className="results-heading">
-            <div>
-              <p className="eyebrow">Plans for {form.locationLabel}</p>
-              <h1>Here’s your way out the door.</h1>
-            </div>
-            <div className="results-actions">
-              <button className="text-button" onClick={() => setPhase("form")}>Change the brief</button>
-              <button className="outline-button" onClick={regenerate}>Regenerate</button>
-            </div>
-          </div>
-
-          <div className="weather-strip">
-            <span className="weather-mark" aria-hidden="true">{response.weather.is_wet ? "☂" : "☼"}</span>
-            <div>
-              <strong>{response.weather.temperature_f ? `${response.weather.temperature_f}° · ` : ""}{response.weather.summary}</strong>
-              <span>{response.weather.precipitation_probability}% chance of precipitation</span>
-            </div>
-            <span className="weather-source">{response.weather.source_name}</span>
-          </div>
-
-          {response.warnings.length > 0 && (
-            <div className="warning-strip" role="status">
-              <strong>Heads up</strong>
-              <span>{response.warnings.join(" ")}</span>
-            </div>
-          )}
-
-          {response.plans.length === 0 ? (
-            <div className="empty-state">
-              <p className="eyebrow">No honest fit</p>
-              <h2>These constraints are too tight for the available data.</h2>
-              <p>Try adding time, budget, or travel radius. We would rather return no plan than a bad one.</p>
-              <button className="generate-button" onClick={() => setPhase("form")}>Adjust the brief</button>
-            </div>
-          ) : activePlan ? (
-            <>
-              <nav className="plan-tabs" aria-label="Choose an itinerary">
-                {response.plans.map((plan, index) => (
+        <section className={inspectorOpen ? "results-section inspector-is-open" : "results-section"}>
+          <div className="results-workspace">
+            <div className="results-main">
+              <div className="results-heading">
+                <div>
+                  <p className="eyebrow">Plans for {displayForm.locationLabel}</p>
+                  <h1>Here’s your way out the door.</h1>
+                </div>
+                <div className="results-actions">
                   <button
-                    key={plan.id}
-                    className={activePlan.id === plan.id ? "active" : ""}
-                    onClick={() => setActivePlanId(plan.id)}
+                    className="text-button"
+                    onClick={openInspector}
+                    aria-expanded={inspectorOpen}
+                    aria-controls="brief-inspector"
                   >
-                    <span>Plan {String.fromCharCode(65 + index)}</span>
-                    <strong>{plan.title}</strong>
-                    <small>{durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high}</small>
+                    Change the brief
                   </button>
-                ))}
-              </nav>
-
-              <div className="result-grid">
-                <article className="timeline-card">
-                  <div className="plan-summary">
-                    <div>
-                      <p className="eyebrow">{activePlan.subtitle}</p>
-                      <h2>{activePlan.title}</h2>
-                    </div>
-                    <div className="confidence-seal">
-                      <strong>{Math.round(activePlan.confidence * 100)}</strong>
-                      <span>{confidenceLabel(activePlan.confidence)}</span>
-                    </div>
-                  </div>
-                  <dl className="plan-facts">
-                    <div><dt>Total time</dt><dd>{durationLabel(activePlan.total_minutes)}</dd></div>
-                    <div><dt>Est. spend</dt><dd>${activePlan.total_cost_low}–${activePlan.total_cost_high}</dd></div>
-                    <div><dt>Stops</dt><dd>{activePlan.steps.length}</dd></div>
-                    <div><dt>Travel</dt><dd>{form.transportMode}</dd></div>
-                  </dl>
-
-                  <ol className="timeline">
-                    {activePlan.steps.map((step, index) => (
-                      <li key={step.candidate_id}>
-                        <div className="travel-label">
-                          <span>{step.travel_before.minutes} min {step.travel_before.mode}</span>
-                          <small>{step.travel_before.distance_miles} mi estimate</small>
-                        </div>
-                        <div className="timeline-marker">{index + 1}</div>
-                        <div className="stop-card">
-                          <div className="stop-time">
-                            <strong>{formatTime(step.start_at)}</strong>
-                            <span>to {formatTime(step.end_at)}</span>
-                          </div>
-                          <div className="stop-copy">
-                            <span className="category-tag">{step.category}</span>
-                            <h3>{step.name}</h3>
-                            <p>${step.cost_low}–${step.cost_high} · {confidenceLabel(step.confidence)}</p>
-                            <details>
-                              <summary>What to verify</summary>
-                              {step.estimate_notes.map((note) => <p key={note}>{note}</p>)}
-                              {step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}
-                            </details>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                  <div className="estimate-note">
-                    <strong>Before you go</strong>
-                    <ul>{activePlan.estimate_notes.map((note) => <li key={note}>{note}</li>)}</ul>
-                  </div>
-                </article>
-
-                <aside className="map-column">
-                  <ItineraryMap plan={activePlan} />
-                  <div className="map-caption">
-                    <span>NOT TURN-BY-TURN</span>
-                    <p>Connectors show the shape of the plan. Check your preferred navigation app before leaving.</p>
-                  </div>
-                </aside>
+                  <button className="outline-button" onClick={regenerate} disabled={isUpdating}>
+                    {isUpdating ? "Working…" : "Regenerate"}
+                  </button>
+                </div>
               </div>
-            </>
-          ) : null}
+
+              {isUpdating && <p className="generation-status" role="status">Updating plans without losing your place…</p>}
+              {errors.length > 0 && !inspectorOpen && (
+                <div className="error-box results-error" role="alert">
+                  {errors.map((error) => <p key={error}>{error}</p>)}
+                </div>
+              )}
+
+              <div className="conditions-rail">
+                <div className="weather-strip">
+                  <span className="weather-mark" aria-hidden="true">{response.weather.is_wet ? "☂" : "☼"}</span>
+                  <div>
+                    <strong>{response.weather.temperature_f ? `${response.weather.temperature_f}° · ` : ""}{response.weather.summary}</strong>
+                    <span>{response.weather.precipitation_probability}% chance of precipitation</span>
+                  </div>
+                  <span className="weather-source">{response.weather.source_name}</span>
+                </div>
+
+                {response.warnings.length > 0 && (
+                  <div className="warning-strip" role="status">
+                    <strong>Heads up</strong>
+                    <span>{response.warnings.join(" ")}</span>
+                  </div>
+                )}
+              </div>
+
+              {response.plans.length === 0 ? (
+                <div className="empty-state">
+                  <p className="eyebrow">No honest fit</p>
+                  <h2>These constraints are too tight for the available data.</h2>
+                  <p>Try adding time, budget, or travel radius. We would rather return no plan than a bad one.</p>
+                  <button className="generate-button" onClick={openInspector}>Adjust the brief</button>
+                </div>
+              ) : activePlan ? (
+                <>
+                  <nav className="plan-tabs" aria-label="Choose an itinerary">
+                    {response.plans.map((plan, index) => (
+                      <button
+                        key={plan.id}
+                        className={activePlan.id === plan.id ? "active" : ""}
+                        aria-pressed={activePlan.id === plan.id}
+                        onClick={() => activatePlan(plan.id)}
+                      >
+                        <span className="plan-tab-topline">
+                          <span>Plan {String.fromCharCode(65 + index)}</span>
+                          {planLabels.get(plan.id) && <mark>{planLabels.get(plan.id)}</mark>}
+                        </span>
+                        <strong>{plan.title}</strong>
+                        <small>
+                          {durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high} · {Math.round(plan.confidence * 100)}% confidence
+                        </small>
+                      </button>
+                    ))}
+                  </nav>
+
+                  <div className="result-grid">
+                    <article className="timeline-card">
+                      <div className="plan-summary">
+                        <div>
+                          <p className="eyebrow">{activePlan.subtitle}</p>
+                          <h2>{activePlan.title}</h2>
+                        </div>
+                        <div className="confidence-seal">
+                          <strong>{Math.round(activePlan.confidence * 100)}</strong>
+                          <span>{confidenceLabel(activePlan.confidence)}</span>
+                        </div>
+                      </div>
+                      <dl className="plan-facts">
+                        <div><dt>Total time</dt><dd>{durationLabel(activePlan.total_minutes)}</dd></div>
+                        <div><dt>Est. spend</dt><dd>${activePlan.total_cost_low}–${activePlan.total_cost_high}</dd></div>
+                        <div><dt>Stops</dt><dd>{activePlan.steps.length}</dd></div>
+                        <div><dt>Travel</dt><dd>{displayForm.transportMode}</dd></div>
+                      </dl>
+
+                      <ol className="timeline">
+                        {activePlan.steps.map((step, index) => (
+                          <li
+                            key={step.candidate_id}
+                            ref={(node) => { timelineRefs.current[step.candidate_id] = node; }}
+                            className={activeStepId === step.candidate_id ? "active" : ""}
+                            data-stop-id={step.candidate_id}
+                            onMouseEnter={() => setPreviewStepId(step.candidate_id)}
+                            onMouseLeave={() => setPreviewStepId(null)}
+                            onFocusCapture={() => setPreviewStepId(step.candidate_id)}
+                            onBlurCapture={(event) => {
+                              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                                setPreviewStepId(null);
+                              }
+                            }}
+                          >
+                            <div className="travel-label">
+                              <span>{step.travel_before.minutes} min {step.travel_before.mode}</span>
+                              <small>{step.travel_before.distance_miles} mi estimate</small>
+                            </div>
+                            <button
+                              type="button"
+                              className="timeline-marker"
+                              aria-label={`Show stop ${index + 1}, ${step.name}, on the map`}
+                              aria-pressed={selectedStepId === step.candidate_id}
+                              onClick={() => selectTimelineStep(step.candidate_id)}
+                            >
+                              {index + 1}
+                            </button>
+                            <div className="stop-card">
+                              <div className="stop-time">
+                                <strong>{formatTime(step.start_at)}</strong>
+                                <span>to {formatTime(step.end_at)}</span>
+                              </div>
+                              <div className="stop-copy">
+                                <span className="category-tag">{step.category}</span>
+                                <h3>
+                                  <button type="button" onClick={() => selectTimelineStep(step.candidate_id)}>
+                                    {step.name}
+                                  </button>
+                                </h3>
+                                <p>${step.cost_low}–${step.cost_high} · {confidenceLabel(step.confidence)}</p>
+                                <details>
+                                  <summary>What to verify</summary>
+                                  {step.estimate_notes.map((note) => <p key={note}>{note}</p>)}
+                                  {step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}
+                                </details>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                      <div className="estimate-note">
+                        <strong>Before you go</strong>
+                        <ul>{activePlan.estimate_notes.map((note) => <li key={note}>{note}</li>)}</ul>
+                      </div>
+                    </article>
+
+                    <aside className="map-column">
+                      <ItineraryMap
+                        plan={activePlan}
+                        activeStepId={activeStepId}
+                        selectedStepId={selectedStepId}
+                        onStepPreview={setPreviewStepId}
+                        onStepSelect={selectMapStep}
+                      />
+                      <div className="map-caption">
+                        <span>NOT TURN-BY-TURN</span>
+                        <p>Connectors show the shape of the plan. Check your preferred navigation app before leaving.</p>
+                      </div>
+                    </aside>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {inspectorOpen && (
+              <aside id="brief-inspector" className="brief-inspector" aria-labelledby="brief-inspector-title">
+                <form onSubmit={updatePlans} noValidate>
+                  <div className="inspector-heading">
+                    <div>
+                      <p className="eyebrow">Edit the assignment</p>
+                      <h2 id="brief-inspector-title">The brief</h2>
+                    </div>
+                    <button type="button" className="inspector-close" onClick={closeInspector} aria-label="Close brief editor">×</button>
+                  </div>
+                  <div className="inspector-scroll">
+                    <BriefFields
+                      form={draftForm}
+                      message={message}
+                      errors={errors}
+                      disabled={isUpdating}
+                      compact
+                      onLocateMe={locateMe}
+                      onResolveLocation={resolveLocation}
+                      onUpdate={update}
+                    />
+                  </div>
+                  <div className="inspector-actions">
+                    <button type="button" className="text-button" onClick={closeInspector} disabled={isUpdating}>Cancel</button>
+                    <button type="submit" className="generate-button" disabled={isUpdating}>
+                      {isUpdating ? "Updating…" : "Update plans"} <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </form>
+              </aside>
+            )}
+          </div>
         </section>
       )}
 
