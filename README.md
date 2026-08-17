@@ -14,7 +14,6 @@ Fixture mode is enabled by default, so the complete input-to-itinerary flow work
 
 - `main` owns the desktop web app and shared FastAPI service.
 - `ios` owns the native SwiftUI app used for iPhone simulator and device testing.
-- `mobile` is the legacy branch name and should not receive new work.
 
 The clients use the same planning model and API contract, while each branch can evolve and be tested without mixing platform build artifacts into the other.
 
