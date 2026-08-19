@@ -5,12 +5,18 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
+build/
+dist/
+*.egg-info/
 
 node_modules/
 .next/
 coverage/
 playwright-report/
 test-results/
+.vercel/
+.vercel-output/
+.env.local
 
 postgres-data/
 

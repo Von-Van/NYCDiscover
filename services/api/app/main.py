@@ -12,6 +12,7 @@ from .cache import build_cache
 from .config import settings
 from .domain import Coordinates, ItineraryInput
 from .engine import generate_itineraries
+from .prefix import ServicePrefixMiddleware
 from .providers import ProviderHub
 from .schemas import (
     GenerateRequest,
@@ -36,6 +37,7 @@ app = FastAPI(
     description="Same-day, constraint-aware NYC itinerary generation.",
     lifespan=lifespan,
 )
+app.add_middleware(ServicePrefixMiddleware, prefix="/api")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],

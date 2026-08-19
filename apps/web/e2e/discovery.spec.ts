@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function generateDemoPlan(page: Page) {
+async function generatePlan(page: Page) {
   await page.goto("/");
   await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
   await page.getByRole("button", { name: "Set" }).click();
@@ -10,7 +10,7 @@ async function generateDemoPlan(page: Page) {
 }
 
 test("Upper West Side social plan stays within four hours and $40", async ({ page }) => {
-  await generateDemoPlan(page);
+  await generatePlan(page);
   const planTabs = page.getByRole("navigation", { name: "Choose an itinerary" });
   await expect(planTabs).toContainText(/up to \$(\d+)/);
   const costs = await planTabs.getByText(/up to \$(\d+)/).allTextContents();
@@ -52,14 +52,16 @@ test.describe("desktop editorial workspace", () => {
     const resultGridBox = await page.locator(".result-grid").boundingBox();
     expect(resultGridBox).not.toBeNull();
     expect(resultGridBox!.y).toBeLessThanOrEqual(560);
-    await expect(page.getByText("Best overall", { exact: true })).toBeVisible();
-    await expect(page.getByText("Lowest cost", { exact: true })).toBeVisible();
+    const planTabs = page.getByRole("navigation", { name: "Choose an itinerary" });
+    const comparisonLabels = await planTabs.locator("mark").allTextContents();
+    expect(comparisonLabels).toContain("Best overall");
+    expect(new Set(comparisonLabels).size).toBe(comparisonLabels.length);
     await expect(page.getByLabel(/Map for/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   });
 
   test("edits a committed brief in the docked inspector", async ({ page }) => {
-    await generateDemoPlan(page);
+    await generatePlan(page);
     await page.getByRole("button", { name: "Change the brief" }).click();
 
     const inspector = page.locator(".brief-inspector");
@@ -81,29 +83,35 @@ test.describe("desktop editorial workspace", () => {
   });
 
   test("synchronizes marker and timeline selection without rebuilding the workspace", async ({ page }) => {
-    await generateDemoPlan(page);
-    const secondPin = page.getByRole("button", { name: "Stop 2: Late-night cookie stop" });
-    const secondStop = page.locator('[data-stop-id="demo-dessert"]');
-    const firstPin = page.getByRole("button", { name: "Stop 1: Neighborhood trivia table" });
+    await generatePlan(page);
+    const timelineStops = page.locator(".timeline > li");
+    const timelineButtons = page.getByRole("button", { name: /^Show stop \d/ });
+    const mapPins = page.locator(".map-shell .map-pin");
+    const firstPin = mapPins.nth(0);
+    const secondPin = mapPins.nth(1);
+    const secondStop = timelineStops.nth(1);
+    expect(await timelineStops.count()).toBeGreaterThanOrEqual(2);
     await expect(secondPin).toBeVisible();
 
-    await page.getByRole("button", { name: /Show stop 1/ }).hover();
+    await timelineButtons.nth(0).hover();
     await expect(firstPin).toHaveClass(/active/);
     await secondPin.hover();
     await expect(secondStop).toHaveClass(/active/);
+    const secondStopName = (await secondPin.getAttribute("aria-label"))?.replace(/^Stop 2: /, "");
+    expect(secondStopName).toBeTruthy();
     await secondPin.focus();
     await page.keyboard.press("Enter");
     await expect(secondPin).toHaveClass(/selected/);
     await expect(secondStop).toHaveClass(/active/);
-    await expect(page.locator(".maplibregl-popup-content")).toContainText("Late-night cookie stop");
+    await expect(page.locator(".maplibregl-popup-content")).toContainText(secondStopName!);
 
     await page.getByRole("button", { name: /Plan B/ }).click();
     await expect(page.locator(".map-pin.selected")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Stop 1: Nicholas Roerich Museum" })).toBeVisible();
+    await expect(page.locator(".map-shell .map-pin").first()).toBeVisible();
   });
 
   test("uses overlay and full-width inspector modes below desktop", async ({ page }) => {
-    await generateDemoPlan(page);
+    await generatePlan(page);
     await page.setViewportSize({ width: 1099, height: 800 });
     await page.getByRole("button", { name: "Change the brief" }).click();
     const inspector = page.locator(".brief-inspector");

@@ -67,11 +67,11 @@ flowchart TD
    docker compose up postgres -d
    ```
 
-3. Start the API:
+3. Start the API with Python 3.12:
 
    ```bash
    cd services/api
-   python3 -m venv .venv
+   python3.12 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements-dev.txt
    uvicorn app.main:app --reload --env-file ../../.env
@@ -86,6 +86,55 @@ flowchart TD
    ```
 
 Open [http://localhost:3000](http://localhost:3000). The API docs are available at [http://localhost:8000/docs](http://localhost:8000/docs).
+
+### Combined Vercel Runtime
+
+After installing the Node and Python dependencies above, run both applications through the
+same routing layer used by a deployment:
+
+```bash
+npm run dev:vercel
+```
+
+Open [http://localhost:3000](http://localhost:3000). FastAPI is mounted at `/api`, including
+health checks at `/api/healthz` and documentation at `/api/docs`. This command forces fixture
+mode and disables the browser demo fallback, so a successful itinerary proves that the Python
+service is handling requests.
+
+The Docker Compose workflow remains available as the platform-independent fallback:
+
+```bash
+docker compose up --build
+```
+
+## Vercel Preview
+
+The repository is configured as one Vercel Services project: Next.js owns `/`, and FastAPI owns
+`/api`. Vercel Services is a beta feature available on Hobby plans; confirm that the account can
+select the **Services** framework preset before deploying.
+
+Set these variables for the Preview environment only:
+
+```text
+FIXTURE_MODE=true
+NEXT_PUBLIC_API_URL=/api
+NEXT_PUBLIC_DEMO_FALLBACK=false
+```
+
+Do not set `DATABASE_URL` for the fixture preview. Link the repository root to a Vercel project,
+then create a non-production deployment with:
+
+```bash
+npm run preview:vercel
+```
+
+Vercel automatically promotes a new project's first deployment to Production, including an
+explicit `--target preview` deployment. To preserve this repository's preview-only policy, the
+script refuses to deploy when the linked project has no deployment history. An approved bootstrap
+decision is required before creating that first Vercel artifact.
+
+The preview is intentionally fixture-backed and is not a production release. Production and
+automatic Git deployments remain deferred until a shared cache provider is selected.
 
 ## Live Data
 
@@ -106,9 +155,15 @@ cd services/api && pytest
 # Frontend unit tests
 npm test
 
+# FastAPI tests
+npm run test:api
+
 # Build and lint
 npm run build
 npm run lint
+
+# All non-browser repository checks
+npm run check
 
 # Generate the TypeScript OpenAPI contract while the API is running
 npm run types:generate
