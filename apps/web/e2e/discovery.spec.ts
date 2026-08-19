@@ -1,5 +1,30 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ page, baseURL }, testInfo) => {
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (!baseURL) return;
+  const origin = new URL(baseURL).origin;
+  const testOctet = testInfo.titlePath.join("").split("").reduce(
+    (sum, character) => (sum + character.charCodeAt(0)) % 250,
+    1,
+  );
+  const testAddress = `192.0.2.${testOctet}`;
+  await page.route(`${origin}/**`, async (route) => {
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        "x-vercel-forwarded-for": testAddress,
+        ...(bypassSecret
+          ? {
+              "x-vercel-protection-bypass": bypassSecret,
+              "x-vercel-set-bypass-cookie": "true",
+            }
+          : {}),
+      },
+    });
+  });
+});
+
 async function generatePlan(page: Page) {
   await page.goto("/");
   await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
@@ -27,6 +52,24 @@ test("form reports an unresolved location", async ({ page }) => {
   await expect(
     page.getByRole("alert").filter({ hasText: "Choose a starting location." }),
   ).toContainText("Choose a starting location.");
+});
+
+test("creates a seven-day share and opens the selected comparison workspace", async ({ page }) => {
+  await generatePlan(page);
+  const planB = page.getByRole("button", { name: /Plan B/ });
+  await planB.click();
+  await page.getByRole("button", { name: "Share plan" }).click();
+  const link = page.locator(".share-message a");
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute("href");
+  expect(href).toMatch(/\/share\/[A-Za-z0-9_-]{22}$/);
+
+  await page.goto(href!);
+  await expect(page.getByRole("heading", { name: "A plan worth passing along." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Plan B/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Change the brief|Regenerate/ })).toHaveCount(0);
+  await page.getByRole("button", { name: /Plan A/ }).click();
+  await expect(page.getByRole("button", { name: /Plan A/ })).toHaveAttribute("aria-pressed", "true");
 });
 
 test.describe("desktop editorial workspace", () => {

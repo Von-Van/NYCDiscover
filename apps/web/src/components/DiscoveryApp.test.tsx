@@ -136,6 +136,7 @@ describe("DiscoveryApp", () => {
     expect(await screen.findByRole("heading", { name: "Here’s your way out the door." })).toBeVisible();
     expect(screen.getAllByText("What to verify").length).toBeGreaterThan(0);
     expect(screen.getByText("NOT TURN-BY-TURN")).toBeVisible();
+    expect(screen.getByText("Fixture demonstration")).toBeVisible();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
@@ -220,5 +221,42 @@ describe("DiscoveryApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select dessert marker" }));
     expect(scrollIntoView).toHaveBeenCalled();
     expect(secondStop).toHaveClass("active");
+  });
+
+  it("creates and copies a signed seven-day share link", async () => {
+    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+    const fetchMock = createSuccessfulFetch();
+    const routedFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith("/v1/shares")) {
+        return new Response(
+          JSON.stringify({ id: "share-id", path: "/share/share-id", expires_at: new Date().toISOString() }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (String(input).includes("/v1/itineraries/generate")) {
+        const submitted = JSON.parse(String(init?.body)) as GenerateRequest;
+        return new Response(
+          JSON.stringify({ ...buildDemoResponse(submitted), data_mode: "live", snapshot_token: "signed.snapshot-token" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return fetchMock(input, init);
+    });
+    vi.stubGlobal("fetch", routedFetch);
+    render(<DiscoveryApp />);
+    await generatePlan();
+
+    expect(screen.getByText("Live data beta")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Share plan" }));
+    expect(await screen.findByRole("button", { name: "Link copied" })).toBeVisible();
+    expect(clipboard.writeText).toHaveBeenCalledWith("http://localhost:3000/share/share-id");
+
+    const shareCall = routedFetch.mock.calls.find(([input]) => String(input).endsWith("/v1/shares"));
+    const body = JSON.parse(String(shareCall?.[1]?.body));
+    expect(body.snapshot_token).toBe("signed.snapshot-token");
+    expect(body.selected_plan_id).toBe("plan-1");
+    expect(body.brief.location_label).toContain("Upper West Side");
+    expect(body.generation.plans).toHaveLength(3);
   });
 });

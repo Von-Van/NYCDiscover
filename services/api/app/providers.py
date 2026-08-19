@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import time
 import urllib.parse
 import urllib.request
-from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -15,6 +13,7 @@ from .cache import ProviderCache
 from .config import Settings
 from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext
 from .fixtures import fixture_candidates, fixture_weather
+from .limits import MemoryProviderThrottle, ProviderThrottle
 
 
 NYC_BOUNDS = {
@@ -38,25 +37,16 @@ CATEGORY_DEFAULTS: dict[str, tuple[int, float, float, bool | None, tuple[str, ..
 }
 
 
-class RateLimiter:
-    def __init__(self) -> None:
-        self._last_request: dict[str, float] = defaultdict(float)
-        self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-
-    async def wait(self, provider: str, minimum_interval_seconds: float) -> None:
-        async with self._locks[provider]:
-            elapsed = time.monotonic() - self._last_request[provider]
-            delay = minimum_interval_seconds - elapsed
-            if delay > 0:
-                await asyncio.sleep(delay)
-            self._last_request[provider] = time.monotonic()
-
-
 class ProviderClient:
-    def __init__(self, settings: Settings, cache: ProviderCache) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        cache: ProviderCache,
+        throttle: ProviderThrottle | None = None,
+    ) -> None:
         self.settings = settings
         self.cache = cache
-        self.rate_limiter = RateLimiter()
+        self.throttle = throttle or MemoryProviderThrottle()
 
     async def fetch_json(
         self,
@@ -78,7 +68,7 @@ class ProviderClient:
         cached = await self.cache.get(cache_key)
         if cached is not None:
             return cached, False
-        await self.rate_limiter.wait(provider, minimum_interval_seconds)
+        await self.throttle.wait(provider, minimum_interval_seconds)
         request_headers = {
             "Accept": "application/json",
             "User-Agent": self.settings.user_agent,
@@ -102,9 +92,14 @@ class ProviderClient:
 
 
 class ProviderHub:
-    def __init__(self, settings: Settings, cache: ProviderCache) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        cache: ProviderCache,
+        throttle: ProviderThrottle | None = None,
+    ) -> None:
         self.settings = settings
-        self.client = ProviderClient(settings, cache)
+        self.client = ProviderClient(settings, cache, throttle)
 
     async def geocode(self, query: str) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
         if self.settings.fixture_mode:
@@ -280,25 +275,45 @@ class ProviderHub:
     async def _event_candidates(
         self, request: ItineraryInput
     ) -> tuple[list[Candidate], tuple[str, ...]]:
-        day = request.start_at.date().isoformat()
+        end_at = request.start_at + timedelta(minutes=request.available_minutes)
+        event_date_format = "%m/%d/%Y %I:%M %p"
         payload, stale = await self.client.fetch_json(
             "nyc-events",
             self.settings.nyc_event_calendar_url,
-            params={"startDate": day, "endDate": day},
+            params={
+                "startDate": request.start_at.strftime(event_date_format),
+                "endDate": end_at.strftime(event_date_format),
+                "sort": "DATE",
+            },
             headers={"Ocp-Apim-Subscription-Key": self.settings.nyc_event_calendar_key},
             ttl_seconds=1800,
             stale_seconds=43200,
         )
         raw_events = _find_event_list(payload)
         events: list[Candidate] = []
+        geocode_attempts = 0
+        unmapped_events = 0
         for raw in raw_events:
-            coordinates = _event_coordinates(raw)
-            if not coordinates:
-                continue
             start_at = _parse_datetime(raw.get("startDate") or raw.get("start") or raw.get("startDateTime"))
             end_at = _parse_datetime(raw.get("endDate") or raw.get("end") or raw.get("endDateTime"))
             name = raw.get("name") or raw.get("title")
             if not name or not start_at:
+                continue
+            coordinates = _event_coordinates(raw)
+            address = _event_address(raw)
+            if not coordinates and address and geocode_attempts < 4:
+                geocode_attempts += 1
+                try:
+                    matches, _ = await self.geocode(address)
+                except Exception:
+                    matches = []
+                if matches:
+                    coordinates = Coordinates(
+                        float(matches[0]["latitude"]),
+                        float(matches[0]["longitude"]),
+                    )
+            if not coordinates:
+                unmapped_events += 1
                 continue
             duration = int((end_at - start_at).total_seconds() / 60) if end_at else 75
             events.append(
@@ -313,7 +328,7 @@ class ProviderHub:
                     cost_high=25,
                     indoor=None,
                     source_name="NYC Event Calendar",
-                    source_url=raw.get("url") or raw.get("link"),
+                    source_url=raw.get("url") or raw.get("link") or raw.get("permalink"),
                     confidence=0.72,
                     start_at=start_at,
                     end_at=end_at,
@@ -323,8 +338,12 @@ class ProviderHub:
                     ),
                 )
             )
-        warnings = ("NYC events were served from stale cache.",) if stale else ()
-        return events, warnings
+        warnings: list[str] = []
+        if stale:
+            warnings.append("NYC events were served from stale cache.")
+        if unmapped_events:
+            warnings.append("Some NYC events could not be mapped and were omitted.")
+        return events, tuple(warnings)
 
 
 def _inside_nyc(lat: float, lon: float) -> bool:
@@ -359,13 +378,30 @@ def _find_event_list(payload: dict[str, Any] | list[Any]) -> list[dict[str, Any]
 def _event_coordinates(raw: dict[str, Any]) -> Coordinates | None:
     location = raw.get("location") if isinstance(raw.get("location"), dict) else {}
     latitude = raw.get("latitude") or raw.get("lat") or location.get("latitude") or location.get("lat")
-    longitude = (
-        raw.get("longitude") or raw.get("lon") or location.get("longitude") or location.get("lon")
-    )
+    longitude = raw.get("longitude") or raw.get("lon") or raw.get("lng") or location.get(
+        "longitude"
+    ) or location.get("lon") or location.get("lng")
     if latitude is None or longitude is None:
         return None
     coords = Coordinates(float(latitude), float(longitude))
     return coords if _inside_nyc(coords.latitude, coords.longitude) else None
+
+
+def _event_address(raw: dict[str, Any]) -> str | None:
+    address = raw.get("address")
+    if isinstance(address, str):
+        return address.strip() or None
+    if isinstance(address, list):
+        parts = [str(part).strip() for part in address if str(part).strip()]
+        return ", ".join(parts) or None
+    if isinstance(address, dict):
+        parts = [
+            str(address[key]).strip()
+            for key in ("venue", "address", "street", "city", "state", "zip")
+            if address.get(key)
+        ]
+        return ", ".join(dict.fromkeys(parts)) or None
+    return None
 
 
 def _parse_datetime(value: Any) -> datetime | None:

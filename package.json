@@ -13,10 +13,12 @@
     "dev": "npm run dev --workspace apps/web",
     "dev:vercel": "PATH=\"$HOME/.local/bin:$PATH\" NO_UPDATE_NOTIFIER=1 FIXTURE_MODE=true NEXT_PUBLIC_API_URL=/api NEXT_PUBLIC_DEMO_FALLBACK=false npx --yes vercel@58.7.1 dev -L",
     "preview:vercel": "PATH=\"$HOME/.local/bin:$PATH\" NO_UPDATE_NOTIFIER=1 node scripts/vercel-preview.mjs",
+    "bootstrap:vercel": "PATH=\"$HOME/.local/bin:$PATH\" NO_UPDATE_NOTIFIER=1 node scripts/vercel-bootstrap.mjs",
+    "db:migrate": "node scripts/api-python.mjs -m app.migrate",
     "build": "npm run build --workspace apps/web",
     "lint": "npm run lint --workspace apps/web",
     "test": "npm run test --workspace apps/web",
-    "test:api": "cd services/api && python3 -m pytest",
+    "test:api": "node scripts/api-python.mjs -m pytest",
     "test:e2e": "npm run test:e2e --workspace apps/web",
     "types:generate": "npm run types:generate --workspace apps/web",
     "check": "npm run lint && npm test && npm run test:api && npm run build"

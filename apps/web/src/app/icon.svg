@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="8" fill="#161510"/>
+  <path d="M8 10h48v44H8z" fill="#f2ead8"/>
+  <path d="M8 10h48v15H8z" fill="#d63227"/>
+  <text x="32" y="22" fill="#faf5e9" font-family="Arial, sans-serif" font-size="13" font-weight="900" text-anchor="middle">NYC</text>
+  <path d="M17 34h30M17 41h30M17 48h21" stroke="#161510" stroke-width="4"/>
+</svg>

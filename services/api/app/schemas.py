@@ -60,6 +60,7 @@ class HealthResponse(BaseModel):
     status: str
     database: str
     fixture_mode: bool
+    sharing_enabled: bool
 
 
 class TravelLegResponse(BaseModel):
@@ -114,3 +115,38 @@ class GenerationResponse(BaseModel):
     plans: list[ItineraryPlanResponse]
     warnings: list[str]
     generated_at: datetime
+    data_mode: Literal["fixture", "live"]
+    snapshot_token: str | None = None
+
+
+class SharedBrief(BaseModel):
+    start_at: datetime
+    available_minutes: int
+    budget_min: float
+    budget_max: float
+    group_size: int
+    transport_mode: TransportMode
+    radius_miles: float
+    mood: Mood
+
+
+class CreateShareRequest(BaseModel):
+    brief: GenerateRequest
+    generation: GenerationResponse
+    snapshot_token: str = Field(min_length=20, max_length=200)
+    selected_plan_id: str = Field(min_length=1, max_length=120)
+
+
+class CreateShareResponse(BaseModel):
+    id: str
+    path: str
+    expires_at: datetime
+
+
+class SharedItineraryResponse(BaseModel):
+    id: str
+    brief: SharedBrief
+    generation: GenerationResponse
+    selected_plan_id: str
+    created_at: datetime
+    expires_at: datetime

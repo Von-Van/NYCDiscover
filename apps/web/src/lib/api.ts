@@ -1,4 +1,11 @@
-import type { GenerateRequest, GenerationResponse, GeocodeResponse } from "./api-types";
+import type {
+  CreateShareRequest,
+  CreateShareResponse,
+  GenerateRequest,
+  GenerationResponse,
+  GeocodeResponse,
+  SharedItineraryResponse,
+} from "./api-types";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -7,9 +14,19 @@ const API_URL =
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`);
+    throw new ApiError(
+      payload?.detail ?? `Request failed with status ${response.status}`,
+      response.status,
+    );
   }
   return response.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 export async function geocodeLocation(query: string): Promise<GeocodeResponse> {
@@ -27,4 +44,21 @@ export async function generateItineraries(request: GenerateRequest): Promise<Gen
     signal: AbortSignal.timeout(20_000),
   });
   return parseResponse<GenerationResponse>(response);
+}
+
+export async function createShare(request: CreateShareRequest): Promise<CreateShareResponse> {
+  const response = await fetch(`${API_URL}/v1/shares`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(12_000),
+  });
+  return parseResponse<CreateShareResponse>(response);
+}
+
+export async function getSharedItinerary(id: string): Promise<SharedItineraryResponse> {
+  const response = await fetch(`${API_URL}/v1/shares/${encodeURIComponent(id)}`, {
+    signal: AbortSignal.timeout(12_000),
+  });
+  return parseResponse<SharedItineraryResponse>(response);
 }

@@ -11,9 +11,11 @@ dist/
 
 node_modules/
 .next/
+apps/web/next-env.d.ts
 coverage/
 playwright-report/
 test-results/
+*.tsbuildinfo
 .vercel/
 .vercel-output/
 .env.local

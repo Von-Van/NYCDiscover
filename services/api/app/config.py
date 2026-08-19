@@ -15,9 +15,7 @@ def _bool(name: str, default: bool) -> bool:
 class Settings:
     fixture_mode: bool = _bool("FIXTURE_MODE", True)
     fixture_weather: str = os.getenv("FIXTURE_WEATHER", "clear")
-    database_url: str = os.getenv(
-        "DATABASE_URL", "postgresql://nycdiscover:nycdiscover@localhost:5432/nycdiscover"
-    )
+    database_url: str = os.getenv("DATABASE_URL", "")
     user_agent: str = os.getenv(
         "NYC_DISCOVER_USER_AGENT", "NYCDiscover/0.1 (contact: local-development)"
     )
@@ -30,7 +28,28 @@ class Settings:
         "NOMINATIM_URL", "https://nominatim.openstreetmap.org/search"
     )
     nws_url: str = os.getenv("NWS_URL", "https://api.weather.gov")
+    share_signing_secret: str = os.getenv("SHARE_SIGNING_SECRET", "")
+    request_hash_secret: str = os.getenv("REQUEST_HASH_SECRET", "")
+    sentry_dsn: str = os.getenv("SENTRY_DSN", "")
+    sentry_environment: str = os.getenv("SENTRY_ENVIRONMENT", "development")
+    vercel_automation_bypass_secret: str = os.getenv(
+        "VERCEL_AUTOMATION_BYPASS_SECRET", ""
+    )
+
+    def validate_live(self) -> None:
+        if self.fixture_mode:
+            return
+        required = {
+            "DATABASE_URL": self.database_url,
+            "NYC_EVENT_CALENDAR_KEY": self.nyc_event_calendar_key,
+            "SHARE_SIGNING_SECRET": self.share_signing_secret,
+            "REQUEST_HASH_SECRET": self.request_hash_secret,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if "local-development" in self.user_agent:
+            missing.append("NYC_DISCOVER_USER_AGENT")
+        if missing:
+            raise RuntimeError(f"Live mode requires: {', '.join(missing)}")
 
 
 settings = Settings()
-

@@ -80,10 +80,44 @@ export interface GenerationResponse {
   plans: ItineraryPlan[];
   warnings: string[];
   generated_at: string;
+  data_mode: "fixture" | "live";
+  snapshot_token: string | null;
+}
+
+export interface SharedBrief {
+  start_at: string;
+  available_minutes: number;
+  budget_min: number;
+  budget_max: number;
+  group_size: number;
+  transport_mode: TransportMode;
+  radius_miles: number;
+  mood: Mood;
+}
+
+export interface CreateShareRequest {
+  brief: GenerateRequest;
+  generation: GenerationResponse;
+  snapshot_token: string;
+  selected_plan_id: string;
+}
+
+export interface CreateShareResponse {
+  id: string;
+  path: string;
+  expires_at: string;
+}
+
+export interface SharedItineraryResponse {
+  id: string;
+  brief: SharedBrief;
+  generation: GenerationResponse;
+  selected_plan_id: string;
+  created_at: string;
+  expires_at: string;
 }
 
 export interface GeocodeResponse {
   results: Array<{ label: string; latitude: number; longitude: number }>;
   warnings: string[];
 }
-

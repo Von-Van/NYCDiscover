@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -61,25 +60,6 @@ class PostgresProviderCache:
     def __init__(self, pool: Any) -> None:
         self.pool = pool
 
-    @classmethod
-    async def connect(cls, database_url: str) -> PostgresProviderCache:
-        import asyncpg
-
-        pool = await asyncpg.create_pool(database_url, min_size=1, max_size=4)
-        async with pool.acquire() as connection:
-            await connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS provider_cache (
-                    cache_key TEXT PRIMARY KEY,
-                    payload JSONB NOT NULL,
-                    expires_at TIMESTAMPTZ NOT NULL,
-                    stale_until TIMESTAMPTZ NOT NULL,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                """
-            )
-        return cls(pool)
-
     async def get(self, key: str, allow_stale: bool = False) -> dict[str, Any] | list[Any] | None:
         column = "stale_until" if allow_stale else "expires_at"
         async with self.pool.acquire() as connection:
@@ -113,14 +93,4 @@ class PostgresProviderCache:
             )
 
     async def close(self) -> None:
-        await self.pool.close()
-
-
-async def build_cache(database_url: str, fixture_mode: bool) -> ProviderCache:
-    if fixture_mode:
-        return MemoryProviderCache()
-    try:
-        return await asyncio.wait_for(PostgresProviderCache.connect(database_url), timeout=3)
-    except Exception:
-        return MemoryProviderCache()
-
+        return None
