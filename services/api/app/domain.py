@@ -53,6 +53,7 @@ class ItineraryInput:
     transport_mode: str
     radius_miles: float
     mood: str
+    moods: tuple[str, ...] = ()
     regeneration_seed: int = 0
 
 

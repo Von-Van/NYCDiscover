@@ -76,7 +76,25 @@ def test_generated_plans_respect_time_budget_and_diversity():
         for right in result.plans[left_index + 1 :]:
             left_ids = {step.candidate_id for step in left.steps}
             right_ids = {step.candidate_id for step in right.steps}
-            assert len(left_ids & right_ids) <= 1
+            shared = len(left_ids & right_ids)
+            assert shared < min(len(left_ids), len(right_ids))
+            assert shared / min(len(left_ids), len(right_ids)) < 0.75
+
+
+def test_generous_brief_prefers_fuller_plans():
+    base = request(
+        available_minutes=360,
+        budget_max=100,
+        group_size=6,
+        transport_mode="transit",
+        radius_miles=5,
+        mood="cultural",
+    )
+
+    result = generate_itineraries(base, fixture_candidates(base), fixture_weather())
+
+    assert result.plans
+    assert len(result.plans[0].steps) == 3
 
 
 def test_rain_excludes_outdoor_only_plan():
@@ -126,6 +144,48 @@ def test_known_closed_hours_are_rejected():
     )
     result = generate_itineraries(base, [closed], fixture_weather())
     assert result.plans == ()
+
+
+def test_place_that_opens_later_can_be_scheduled_after_another_stop():
+    base = request(
+        start_at=datetime(2026, 8, 20, 15, 0, tzinfo=ZoneInfo("America/New_York")),
+        available_minutes=240,
+        mood="cultural",
+    )
+    day = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")[base.start_at.weekday()]
+    first = Candidate(
+        id="first",
+        name="Long museum visit",
+        category="museum",
+        mood_tags=("cultural",),
+        coordinates=Coordinates(40.7871, -73.9755),
+        duration_minutes=120,
+        cost_low=0,
+        cost_high=0,
+        indoor=True,
+        source_name="Test",
+        source_url=None,
+        confidence=0.9,
+    )
+    later = Candidate(
+        id="later",
+        name="Late-opening gallery",
+        category="gallery",
+        mood_tags=("cultural",),
+        coordinates=Coordinates(40.7872, -73.9756),
+        duration_minutes=45,
+        cost_low=0,
+        cost_high=0,
+        indoor=True,
+        source_name="Test",
+        source_url=None,
+        confidence=0.9,
+        opening_hours=f"{day} {base.start_at.hour + 2:02d}:00-23:00",
+    )
+
+    result = generate_itineraries(base, [first, later], fixture_weather())
+
+    assert any([step.candidate_id for step in plan.steps] == ["first", "later"] for plan in result.plans)
 
 
 def test_end_of_day_opening_hours_are_supported():

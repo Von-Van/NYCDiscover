@@ -154,6 +154,8 @@ export interface components {
              * @enum {string}
              */
             mood: "social" | "relaxing" | "outdoors" | "date-night" | "productive" | "chaotic" | "low-energy" | "cultural" | "food-focused";
+            /** Moods */
+            moods?: ("social" | "relaxing" | "outdoors" | "date-night" | "productive" | "chaotic" | "low-energy" | "cultural" | "food-focused")[];
             /**
              * Regeneration Seed
              * @default 0
@@ -305,6 +307,8 @@ export interface components {
              * @enum {string}
              */
             mood: "social" | "relaxing" | "outdoors" | "date-night" | "productive" | "chaotic" | "low-energy" | "cultural" | "food-focused";
+            /** Moods */
+            moods?: ("social" | "relaxing" | "outdoors" | "date-night" | "productive" | "chaotic" | "low-energy" | "cultural" | "food-focused")[];
         };
         /** SharedItineraryResponse */
         SharedItineraryResponse: {
@@ -381,6 +385,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** WeatherResponse */
         WeatherResponse: {

@@ -13,6 +13,7 @@ const request: GenerateRequest = {
   transport_mode: "walk",
   radius_miles: 2,
   mood: "social",
+  moods: ["social"],
   regeneration_seed: 0,
 };
 
@@ -26,4 +27,3 @@ describe("demo response", () => {
     }
   });
 });
-

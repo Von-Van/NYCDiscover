@@ -205,6 +205,7 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
         transport_mode=payload.transport_mode,
         radius_miles=payload.radius_miles,
         mood=payload.mood,
+        moods=tuple(payload.moods),
         regeneration_seed=payload.regeneration_seed,
     )
     try:

@@ -145,7 +145,10 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
             <div><dt>Time</dt><dd>{durationLabel(shared.brief.available_minutes)}</dd></div>
             <div><dt>Budget</dt><dd>up to ${shared.brief.budget_max}</dd></div>
             <div><dt>Group</dt><dd>{shared.brief.group_size}</dd></div>
-            <div><dt>Mood</dt><dd>{shared.brief.mood.replace("-", " ")}</dd></div>
+            <div>
+              <dt>Mood</dt>
+              <dd>{(shared.brief.moods.length ? shared.brief.moods : [shared.brief.mood]).map((mood) => mood.replace("-", " ")).join(", ")}</dd>
+            </div>
           </dl>
 
           <div className="conditions-rail">

@@ -163,3 +163,13 @@ def test_live_settings_require_shared_state_and_contactable_identity():
     assert "SHARE_SIGNING_SECRET" in message
     assert "REQUEST_HASH_SECRET" in message
     assert "NYC_DISCOVER_USER_AGENT" in message
+
+
+def test_generate_request_normalizes_legacy_and_multiple_moods():
+    legacy = brief()
+    multiple = GenerateRequest.model_validate(
+        {**legacy.model_dump(), "mood": "social", "moods": ["social", "cultural"]}
+    )
+
+    assert legacy.moods == ["cultural"]
+    assert multiple.moods == ["social", "cultural"]

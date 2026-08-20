@@ -20,6 +20,7 @@ const request: GenerateRequest = {
   transport_mode: "walk",
   radius_miles: 2,
   mood: "social",
+  moods: ["social"],
   regeneration_seed: 0,
 };
 
@@ -39,6 +40,7 @@ function sharedResponse(): SharedItineraryResponse {
       transport_mode: "walk",
       radius_miles: 2,
       mood: "social",
+      moods: ["social"],
     },
     generation,
     selected_plan_id: "plan-2",

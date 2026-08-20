@@ -32,6 +32,7 @@ const request: GenerateRequest = {
   transport_mode: "walk",
   radius_miles: 2,
   mood: "social",
+  moods: ["social"],
   regeneration_seed: 0,
 };
 
@@ -75,6 +76,28 @@ async function generatePlan() {
 }
 
 describe("DiscoveryApp", () => {
+  it("allows up to three moods while keeping one selected", () => {
+    render(<DiscoveryApp />);
+
+    const social = screen.getByRole("button", { name: "Social" });
+    const cultural = screen.getByRole("button", { name: "Cultural" });
+    const foodFocused = screen.getByRole("button", { name: "Food-focused" });
+    const relaxing = screen.getByRole("button", { name: "Relaxing" });
+
+    fireEvent.click(cultural);
+    fireEvent.click(foodFocused);
+    expect(social).toHaveAttribute("aria-pressed", "true");
+    expect(cultural).toHaveAttribute("aria-pressed", "true");
+    expect(foodFocused).toHaveAttribute("aria-pressed", "true");
+    expect(relaxing).toBeDisabled();
+
+    fireEvent.click(social);
+    expect(relaxing).toBeEnabled();
+    fireEvent.click(foodFocused);
+    fireEvent.click(cultural);
+    expect(cultural).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("shows form validation without making a request", () => {
     render(<DiscoveryApp />);
     fireEvent.click(screen.getByRole("button", { name: /Make my plan/ }));

@@ -11,7 +11,7 @@ const validForm: DiscoveryForm = {
   groupSize: 2,
   transportMode: "walk",
   radiusMiles: 2,
-  mood: "social",
+  moods: ["social"],
 };
 
 describe("discovery form", () => {
@@ -24,6 +24,16 @@ describe("discovery form", () => {
     expect(request.location_label).toBe("Upper West Side");
     expect(request.regeneration_seed).toBe(7);
     expect(request.budget_max).toBe(40);
+    expect(request.moods).toEqual(["social"]);
+  });
+
+  it("sends multiple moods while retaining a legacy primary mood", () => {
+    const request = toGenerateRequest(
+      { ...validForm, moods: ["social", "cultural", "food-focused"] },
+      0,
+    );
+
+    expect(request.mood).toBe("social");
+    expect(request.moods).toEqual(["social", "cultural", "food-focused"]);
   });
 });
-
