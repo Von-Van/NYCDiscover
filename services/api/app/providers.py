@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -214,18 +215,26 @@ class ProviderHub:
     async def _overpass_candidates(
         self, request: ItineraryInput
     ) -> tuple[list[Candidate], tuple[str, ...]]:
-        radius_meters = int(request.radius_miles * 1609.34)
         # Coarsen the origin before provider requests so cached responses never fingerprint
         # a user's precise starting point.
         lat = round(request.coordinates.latitude, 3)
         lon = round(request.coordinates.longitude, 3)
+        latitude_delta = request.radius_miles / 69
+        longitude_delta = request.radius_miles / (69 * math.cos(math.radians(lat)))
+        bounds = (
+            round(lat - latitude_delta, 4),
+            round(lon - longitude_delta, 4),
+            round(lat + latitude_delta, 4),
+            round(lon + longitude_delta, 4),
+        )
+        bbox = ",".join(str(value) for value in bounds)
         query = f"""
-        [out:json][timeout:20];
+        [out:json][timeout:15];
         (
-          nwr(around:{radius_meters},{lat},{lon})["amenity"~"restaurant|bar|cafe|library"];
-          nwr(around:{radius_meters},{lat},{lon})["tourism"~"museum|gallery|attraction"];
-          nwr(around:{radius_meters},{lat},{lon})["leisure"="park"];
-          nwr(around:{radius_meters},{lat},{lon})["shop"="books"];
+          nwr({bbox})["amenity"~"restaurant|bar|cafe|library"];
+          nwr({bbox})["tourism"~"museum|gallery|attraction"];
+          nwr({bbox})["leisure"="park"];
+          nwr({bbox})["shop"="books"];
         );
         out center tags 90;
         """
@@ -297,11 +306,16 @@ class ProviderHub:
             start_at = _parse_datetime(raw.get("startDate") or raw.get("start") or raw.get("startDateTime"))
             end_at = _parse_datetime(raw.get("endDate") or raw.get("end") or raw.get("endDateTime"))
             name = raw.get("name") or raw.get("title")
-            if not name or not start_at:
+            if not name or not start_at or _event_is_canceled(raw):
                 continue
             coordinates = _event_coordinates(raw)
             address = _event_address(raw)
-            if not coordinates and address and geocode_attempts < 4:
+            if (
+                not coordinates
+                and address
+                and _event_address_is_specific(address)
+                and geocode_attempts < 6
+            ):
                 geocode_attempts += 1
                 try:
                     matches, _ = await self.geocode(address)
@@ -402,6 +416,30 @@ def _event_address(raw: dict[str, Any]) -> str | None:
         ]
         return ", ".join(dict.fromkeys(parts)) or None
     return None
+
+
+def _event_address_is_specific(address: str) -> bool:
+    normalized = " ".join(address.lower().split())
+    generic_phrases = (
+        "check website",
+        "locations across",
+        "multiple locations",
+        "online",
+        "various locations",
+        "virtual",
+        "zoom",
+    )
+    if any(phrase in normalized for phrase in generic_phrases):
+        return False
+    return any(character.isdigit() for character in normalized) or any(
+        word in normalized
+        for word in ("avenue", "center", "museum", "park", "square", "street", "venue")
+    )
+
+
+def _event_is_canceled(raw: dict[str, Any]) -> bool:
+    value = raw.get("canceled")
+    return value is True or str(value).strip().lower() in {"1", "true", "yes"}
 
 
 def _parse_datetime(value: Any) -> datetime | None:
