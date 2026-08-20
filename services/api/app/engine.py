@@ -87,7 +87,9 @@ def candidate_score(
 ) -> float:
     origin = origin or request.coordinates
     distance = haversine_miles(origin, candidate.coordinates)
-    mood = 1.0 if request.mood in candidate.mood_tags else 0.30
+    selected_moods = request.moods or (request.mood,)
+    mood_matches = len(set(selected_moods) & set(candidate.mood_tags))
+    mood = 0.30 if mood_matches == 0 else 0.75 + 0.25 * mood_matches / len(selected_moods)
     proximity = max(0.0, 1.0 - (distance / max(request.radius_miles, 0.1)))
     budget = _budget_fit(candidate, request)
     time_efficiency = min(1.0, candidate.duration_minutes / max(request.available_minutes * 0.35, 1))
@@ -139,12 +141,6 @@ def _candidate_is_possible(
         return False
     if candidate.end_at and candidate.end_at > window_end:
         return False
-    estimated_start = candidate.start_at or request.start_at + timedelta(
-        minutes=estimate_travel_minutes(distance, request.transport_mode)
-    )
-    estimated_end = candidate.end_at or estimated_start + timedelta(minutes=candidate.duration_minutes)
-    if not _known_open_during(candidate.opening_hours, estimated_start, estimated_end):
-        return False
     return True
 
 
@@ -165,13 +161,13 @@ def _known_open_during(opening_hours: str | None, start: datetime, end: datetime
         if not match:
             continue
         first_day, last_day, open_time, close_time = match.groups()
-        if first_day and not _day_in_range(day_code, first_day, last_day or first_day):
-            continue
         opened = _clock_on_date(start, open_time)
         closed = _clock_on_date(start, close_time)
         if opened is None or closed is None:
             continue
         parsed_any = True
+        if first_day and not _day_in_range(day_code, first_day, last_day or first_day):
+            continue
         if closed <= opened:
             closed += timedelta(days=1)
         if opened <= start and end <= closed:
@@ -229,6 +225,8 @@ def _extend_beam(
     window_end = request.start_at + timedelta(minutes=request.available_minutes)
     if activity_end > window_end:
         return None
+    if not _known_open_during(candidate.opening_hours, activity_start, activity_end):
+        return None
     if beam.total_cost_high + candidate.cost_high > request.budget_max:
         return None
     used_categories = tuple(step.category for step in beam.steps)
@@ -272,7 +270,12 @@ def _beam_to_plan(beam: _Beam, request: ItineraryInput, index: int) -> Itinerary
     first_category = CATEGORY_LABELS.get(beam.steps[0].category, beam.steps[0].category.title())
     last_category = CATEGORY_LABELS.get(beam.steps[-1].category, beam.steps[-1].category.title())
     title = first_category if len(beam.steps) == 1 else f"{first_category} + {last_category}"
-    subtitle = MOOD_LABELS.get(request.mood, "A plan for right now")
+    selected_moods = request.moods or (request.mood,)
+    subtitle = (
+        MOOD_LABELS.get(request.mood, "A plan for right now")
+        if len(selected_moods) == 1
+        else "A blend of " + ", ".join(mood.replace("-", " ") for mood in selected_moods)
+    )
     confidence = sum(step.confidence for step in beam.steps) / len(beam.steps)
     confidence -= min(0.12, beam.idle_minutes / max(request.available_minutes, 1))
     total_minutes = int((beam.current_time - request.start_at).total_seconds() / 60)
@@ -294,6 +297,30 @@ def _beam_to_plan(beam: _Beam, request: ItineraryInput, index: int) -> Itinerary
         steps=beam.steps,
         estimate_notes=tuple(sorted(notes)),
     )
+
+
+def _beam_rank(beam: _Beam, request: ItineraryInput) -> float:
+    if not beam.steps:
+        return 0.0
+    active_minutes = sum(
+        step.travel_before.minutes
+        + int((step.end_at - step.start_at).total_seconds() / 60)
+        for step in beam.steps
+    )
+    return (
+        beam.score / len(beam.steps)
+        + len(beam.steps) * 0.11
+        + min(1.0, active_minutes / max(request.available_minutes, 1)) * 0.16
+        - beam.idle_minutes / max(request.available_minutes, 1) * 0.25
+    )
+
+
+def _plans_are_too_similar(left: _Beam, right: _Beam) -> bool:
+    left_ids = {step.candidate_id for step in left.steps}
+    right_ids = {step.candidate_id for step in right.steps}
+    smaller_size = min(len(left_ids), len(right_ids))
+    shared = len(left_ids & right_ids)
+    return shared == smaller_size or shared / smaller_size >= 0.75
 
 
 def generate_itineraries(
@@ -336,21 +363,18 @@ def generate_itineraries(
         if not next_beams:
             break
         next_beams.sort(
-            key=lambda beam: beam.score
-            + len(beam.steps) * 0.08
-            - beam.idle_minutes / max(request.available_minutes, 1),
+            key=lambda beam: _beam_rank(beam, request),
             reverse=True,
         )
-        beams = next_beams[:18]
+        beams = next_beams[:48]
 
     completed.sort(
-        key=lambda beam: beam.score / len(beam.steps) + min(len(beam.steps), 2) * 0.05,
+        key=lambda beam: _beam_rank(beam, request),
         reverse=True,
     )
     selected: list[_Beam] = []
     for beam in completed:
-        ids = {step.candidate_id for step in beam.steps}
-        if any(len(ids & {step.candidate_id for step in other.steps}) > 1 for other in selected):
+        if any(_plans_are_too_similar(beam, other) for other in selected):
             continue
         selected.append(beam)
         if len(selected) == 3:

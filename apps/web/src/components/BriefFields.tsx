@@ -31,7 +31,7 @@ export const initialDiscoveryForm: DiscoveryForm = {
   groupSize: 2,
   transportMode: "walk",
   radiusMiles: 2,
-  mood: "social",
+  moods: ["social"],
 };
 
 interface BriefFieldsProps {
@@ -203,21 +203,34 @@ export function BriefFields({
 
       <fieldset className="form-section mood-section" disabled={disabled}>
         <legend>
-          <span>7</span> Pick the mood
+          <span>7</span> Pick up to 3 moods
         </legend>
+        <p className="field-hint">Mix a few; keep at least one selected.</p>
         <div className="mood-grid">
-          {moods.map((mood) => (
-            <button
-              type="button"
-              key={mood.value}
-              className={form.mood === mood.value ? "active" : ""}
-              aria-pressed={form.mood === mood.value}
-              onClick={() => onUpdate("mood", mood.value)}
-            >
-              <span aria-hidden="true">{mood.mark}</span>
-              {mood.label}
-            </button>
-          ))}
+          {moods.map((mood) => {
+            const selected = form.moods.includes(mood.value);
+            return (
+              <button
+                type="button"
+                key={mood.value}
+                className={selected ? "active" : ""}
+                aria-pressed={selected}
+                disabled={!selected && form.moods.length >= 3}
+                onClick={() => {
+                  if (selected && form.moods.length === 1) return;
+                  onUpdate(
+                    "moods",
+                    selected
+                      ? form.moods.filter((value) => value !== mood.value)
+                      : [...form.moods, mood.value],
+                  );
+                }}
+              >
+                <span aria-hidden="true">{mood.mark}</span>
+                {mood.label}
+              </button>
+            );
+          })}
         </div>
       </fieldset>
 

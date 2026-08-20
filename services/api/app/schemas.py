@@ -36,12 +36,19 @@ class GenerateRequest(BaseModel):
     transport_mode: TransportMode
     radius_miles: float = Field(ge=0.25, le=10)
     mood: Mood
+    moods: list[Mood] = Field(default_factory=list, max_length=3)
     regeneration_seed: int = Field(default=0, ge=0, le=1_000_000)
 
     @model_validator(mode="after")
     def validate_budget(self) -> GenerateRequest:
         if self.budget_min > self.budget_max:
             raise ValueError("budget_min cannot exceed budget_max")
+        selected = list(dict.fromkeys(self.moods or [self.mood]))
+        if self.mood not in selected:
+            selected.insert(0, self.mood)
+        if len(selected) > 3:
+            raise ValueError("Choose no more than three moods")
+        self.moods = selected
         return self
 
 
@@ -128,6 +135,7 @@ class SharedBrief(BaseModel):
     transport_mode: TransportMode
     radius_miles: float
     mood: Mood
+    moods: list[Mood] = Field(default_factory=list, max_length=3)
 
 
 class CreateShareRequest(BaseModel):

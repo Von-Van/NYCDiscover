@@ -15,6 +15,7 @@ function copyForm(form: DiscoveryForm): DiscoveryForm {
   return {
     ...form,
     coordinates: form.coordinates ? { ...form.coordinates } : null,
+    moods: [...form.moods],
   };
 }
 

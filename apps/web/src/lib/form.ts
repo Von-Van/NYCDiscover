@@ -10,7 +10,7 @@ export interface DiscoveryForm {
   groupSize: number;
   transportMode: TransportMode;
   radiusMiles: number;
-  mood: Mood;
+  moods: Mood[];
 }
 
 export function validateForm(form: DiscoveryForm): string[] {
@@ -19,6 +19,8 @@ export function validateForm(form: DiscoveryForm): string[] {
   if (form.availableMinutes < 60) errors.push("Set aside at least one hour.");
   if (form.budgetMax < 0) errors.push("Budget cannot be negative.");
   if (form.groupSize < 1) errors.push("Group size must be at least one.");
+  if (form.moods.length < 1) errors.push("Choose at least one mood.");
+  if (form.moods.length > 3) errors.push("Choose no more than three moods.");
   if (form.startMode === "later" && !form.laterTime) errors.push("Choose a start time for today.");
   return errors;
 }
@@ -40,8 +42,8 @@ export function toGenerateRequest(form: DiscoveryForm, regenerationSeed: number)
     group_size: form.groupSize,
     transport_mode: form.transportMode,
     radius_miles: form.radiusMiles,
-    mood: form.mood,
+    mood: form.moods[0],
+    moods: form.moods,
     regeneration_seed: regenerationSeed,
   };
 }
-

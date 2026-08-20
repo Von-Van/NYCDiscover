@@ -27,6 +27,7 @@ export interface GenerateRequest {
   transport_mode: TransportMode;
   radius_miles: number;
   mood: Mood;
+  moods: Mood[];
   regeneration_seed: number;
 }
 
@@ -93,6 +94,7 @@ export interface SharedBrief {
   transport_mode: TransportMode;
   radius_miles: number;
   mood: Mood;
+  moods: Mood[];
 }
 
 export interface CreateShareRequest {

@@ -61,6 +61,7 @@ def redact_share(request: CreateShareRequest) -> tuple[SharedBrief, GenerationRe
         transport_mode=request.brief.transport_mode,
         radius_miles=request.brief.radius_miles,
         mood=request.brief.mood,
+        moods=request.brief.moods,
     )
     generation = request.generation.model_copy(deep=True)
     generation.snapshot_token = None
