@@ -1,5 +1,30 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ page, baseURL }, testInfo) => {
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (!baseURL) return;
+  const origin = new URL(baseURL).origin;
+  const testOctet = testInfo.titlePath.join("").split("").reduce(
+    (sum, character) => (sum + character.charCodeAt(0)) % 250,
+    1,
+  );
+  const testAddress = `192.0.2.${testOctet}`;
+  await page.route(`${origin}/**`, async (route) => {
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        "x-vercel-forwarded-for": testAddress,
+        ...(bypassSecret
+          ? {
+              "x-vercel-protection-bypass": bypassSecret,
+              "x-vercel-set-bypass-cookie": "true",
+            }
+          : {}),
+      },
+    });
+  });
+});
+
 async function generatePlan(page: Page) {
   await page.goto("/");
   await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
@@ -27,6 +52,65 @@ test("form reports an unresolved location", async ({ page }) => {
   await expect(
     page.getByRole("alert").filter({ hasText: "Choose a starting location." }),
   ).toContainText("Choose a starting location.");
+});
+
+test("creates a seven-day share and opens the selected comparison workspace", async ({ page }) => {
+  await generatePlan(page);
+  const planB = page.getByRole("button", { name: /Plan B/ });
+  await planB.click();
+  await page.getByRole("button", { name: "Share plan" }).click();
+  const link = page.locator(".share-message a");
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute("href");
+  expect(href).toMatch(/\/share\/[A-Za-z0-9_-]{22}$/);
+
+  await page.goto(href!);
+  await expect(page.getByRole("heading", { name: "A plan worth passing along." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Plan B/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Change the brief|Regenerate/ })).toHaveCount(0);
+  await page.getByRole("button", { name: /Plan A/ }).click();
+  await expect(page.getByRole("button", { name: /Plan A/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("hosted shared workspace stays interactive and console-clean", async ({ page }, testInfo) => {
+  const sharedPath = process.env.PLAYWRIGHT_SHARED_PATH;
+  test.skip(!sharedPath, "Requires a live shared itinerary path");
+  test.skip(testInfo.project.name !== "desktop-chromium", "Desktop hosted smoke coverage");
+
+  const browserErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(sharedPath!);
+  await expect(page.getByRole("heading", { name: "A plan worth passing along." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Change the brief|Regenerate/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+
+  const planB = page.getByRole("button", { name: /Plan B/ });
+  await planB.focus();
+  await page.keyboard.press("Enter");
+  await expect(planB).toHaveAttribute("aria-pressed", "true");
+
+  const timelineStops = page.locator(".timeline > li");
+  const secondStop = timelineStops.nth(1);
+  const secondPin = page.locator(".map-shell .map-pin").nth(1);
+  expect(await timelineStops.count()).toBeGreaterThanOrEqual(2);
+  await expect(secondPin).toBeVisible();
+  await secondPin.hover();
+  await expect(secondStop).toHaveClass(/active/);
+  await secondPin.focus();
+  await page.keyboard.press("Enter");
+  await expect(secondPin).toHaveClass(/selected/);
+  await expect(page.locator(".maplibregl-popup-content")).toBeVisible();
+
+  for (const width of [1099, 720]) {
+    await page.setViewportSize({ width, height: 800 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  }
+  expect(browserErrors).toEqual([]);
 });
 
 test.describe("desktop editorial workspace", () => {

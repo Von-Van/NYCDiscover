@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": "sanitized-event-1",
+      "name": "Public Art Workshop",
+      "startDate": "2026-08-19T19:00:00.000-04:00",
+      "endDate": "2026-08-19T20:30:00.000-04:00",
+      "timePart": "7:00 PM",
+      "shortDesc": "A free city-sponsored workshop.",
+      "address": "5 Sanitized Avenue, Manhattan",
+      "canceled": false,
+      "permalink": "https://www.nyc.gov/events/sanitized-event"
+    }
+  ],
+  "pageNumber": 1
+}

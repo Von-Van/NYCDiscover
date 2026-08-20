@@ -103,6 +103,7 @@ export function buildDemoResponse(request: GenerateRequest): GenerationResponse 
     plans,
     warnings: ["Demo data is shown because the local API is unavailable."],
     generated_at: new Date().toISOString(),
+    data_mode: "fixture",
+    snapshot_token: null,
   };
 }
-

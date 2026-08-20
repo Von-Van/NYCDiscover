@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { generateItineraries, geocodeLocation } from "@/lib/api";
-import type { GenerationResponse } from "@/lib/api-types";
+import { createShare, generateItineraries, geocodeLocation } from "@/lib/api";
+import type { GenerateRequest, GenerationResponse } from "@/lib/api-types";
 import { buildDemoResponse } from "@/lib/demo-data";
 import { toGenerateRequest, validateForm, type DiscoveryForm } from "@/lib/form";
 import { getPlanComparisonLabels } from "@/lib/plan-comparison";
@@ -43,6 +43,7 @@ export function DiscoveryApp() {
   const [committedForm, setCommittedForm] = useState<DiscoveryForm | null>(null);
   const [phase, setPhase] = useState<"form" | "loading" | "results">("form");
   const [response, setResponse] = useState<GenerationResponse | null>(null);
+  const [committedRequest, setCommittedRequest] = useState<GenerateRequest | null>(null);
   const [activePlanId, setActivePlanId] = useState("plan-1");
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
@@ -51,6 +52,9 @@ export function DiscoveryApp() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [previewStepId, setPreviewStepId] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareStatus, setShareStatus] = useState<"idle" | "creating" | "ready" | "copied" | "error">("idle");
+  const [shareMessage, setShareMessage] = useState("");
   const timelineRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   const activePlan = useMemo(
@@ -178,11 +182,15 @@ export function DiscoveryApp() {
 
       const committed = copyForm(form);
       setResponse(result);
+      setCommittedRequest(request);
       setCommittedForm(committed);
       setDraftForm(copyForm(committed));
       setActivePlanId(result.plans[0]?.id ?? "");
       setSelectedStepId(null);
       setPreviewStepId(null);
+      setShareUrl("");
+      setShareStatus("idle");
+      setShareMessage("");
       setInspectorOpen(false);
       setErrors([]);
       setPhase("results");
@@ -223,6 +231,49 @@ export function DiscoveryApp() {
     setActivePlanId(planId);
     setSelectedStepId(null);
     setPreviewStepId(null);
+    setShareUrl("");
+    setShareStatus("idle");
+    setShareMessage("");
+  }
+
+  async function copyShareUrl(url: string) {
+    if (!navigator.clipboard) {
+      setShareStatus("ready");
+      setShareMessage("The link is ready below.");
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setShareStatus("copied");
+    setShareMessage("Link copied. It expires in seven days.");
+  }
+
+  async function sharePlan() {
+    if (shareUrl) {
+      try {
+        await copyShareUrl(shareUrl);
+      } catch {
+        setShareStatus("ready");
+        setShareMessage("The link is ready below.");
+      }
+      return;
+    }
+    if (!response?.snapshot_token || !committedRequest || !activePlanId) return;
+    setShareStatus("creating");
+    setShareMessage("Creating a private seven-day snapshot…");
+    try {
+      const shared = await createShare({
+        brief: committedRequest,
+        generation: response,
+        snapshot_token: response.snapshot_token,
+        selected_plan_id: activePlanId,
+      });
+      const url = new URL(shared.path, window.location.origin).toString();
+      setShareUrl(url);
+      await copyShareUrl(url);
+    } catch (error) {
+      setShareStatus("error");
+      setShareMessage(error instanceof Error ? error.message : "Could not create the link.");
+    }
   }
 
   function selectMapStep(stepId: string) {
@@ -325,8 +376,42 @@ export function DiscoveryApp() {
                   <button className="outline-button" onClick={regenerate} disabled={isUpdating}>
                     {isUpdating ? "Working…" : "Regenerate"}
                   </button>
+                  {response.snapshot_token && (
+                    <button
+                      className="share-button"
+                      onClick={sharePlan}
+                      disabled={isUpdating || shareStatus === "creating"}
+                    >
+                      {shareStatus === "creating"
+                        ? "Creating…"
+                        : shareStatus === "copied"
+                          ? "Link copied"
+                          : shareUrl
+                            ? "Copy link"
+                            : "Share plan"}
+                    </button>
+                  )}
                 </div>
               </div>
+
+              <div className={`data-mode-notice ${response.data_mode}`} role="status">
+                <strong>{response.data_mode === "live" ? "Live data beta" : "Fixture demonstration"}</strong>
+                <span>
+                  {response.data_mode === "live"
+                    ? "Built from current public place, event, and weather sources. Verify details before leaving."
+                    : "This environment uses a stable sample dataset; no live provider calls were made."}
+                </span>
+              </div>
+
+              {shareMessage && (
+                <div
+                  className={shareStatus === "error" ? "share-message error" : "share-message"}
+                  role={shareStatus === "error" ? "alert" : "status"}
+                >
+                  <span>{shareMessage}</span>
+                  {shareUrl && <a href={shareUrl}>{shareUrl}</a>}
+                </div>
+              )}
 
               {isUpdating && <p className="generation-status" role="status">Updating plans without losing your place…</p>}
               {errors.length > 0 && !inspectorOpen && (
@@ -515,7 +600,7 @@ export function DiscoveryApp() {
       <footer>
         <span>NYC DISCOVER</span>
         <p>Recommend plans, not options.</p>
-        <span>OPEN DATA · HONEST ESTIMATES</span>
+        <span><a href="/privacy">PRIVACY</a> · <a href="https://github.com/Von-Van/NYCDiscover/issues">GITHUB ISSUES</a></span>
       </footer>
     </main>
   );

@@ -8,7 +8,12 @@
     "api": {
       "root": "services/api/",
       "entrypoint": "app.main:app",
-      "framework": "fastapi"
+      "framework": "fastapi",
+      "functions": {
+        "app/main.py": {
+          "maxDuration": 45
+        }
+      }
     }
   },
   "rewrites": [

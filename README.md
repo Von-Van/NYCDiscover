@@ -1,174 +1,198 @@
 # NYC Discover
 
-NYC Discover turns a free block of time into a small, practical same-day itinerary. The MVP combines nearby places, city events, weather, transparent estimates, and a bounded itinerary search rather than returning another long list.
+NYC Discover turns a free block of time into a small, practical same-day itinerary. It combines nearby places, city events, weather, transparent estimates, and a bounded itinerary search instead of returning another long list.
+
+The desktop web app is a launch candidate for a guest-only public beta at `nycdiscover.vercel.app`. Fixture mode remains the default for local development and the intentional first-production bootstrap.
 
 ## Stack
 
-- `apps/web`: Next.js, React, Tailwind CSS, MapLibre
-- `services/api`: FastAPI, Python
-- PostgreSQL: provider-response cache only
-
-Fixture mode is enabled by default, so the complete input-to-itinerary flow works without API keys or live network calls.
+- `apps/web`: Next.js 16, React 19, MapLibre, Vitest, Playwright
+- `services/api`: FastAPI, Python 3.12, asyncpg, numbered SQL migrations
+- Neon PostgreSQL: provider cache, distributed throttles, rate windows, and seven-day shares
+- Vercel Services: one origin for Next.js and FastAPI
+- Vercel Analytics and Speed Insights, plus privacy-scrubbed Sentry instrumentation
 
 ## Branch Layout
 
 - `main` owns the desktop web app and shared FastAPI service.
 - `ios` owns the native SwiftUI app used for iPhone simulator and device testing.
+- Launch work is staged on `codex/launch-v1` before an exact tested commit reaches `main`.
 
-The clients use the same planning model and API contract, while each branch can evolve and be tested without mixing platform build artifacts into the other.
+The additive API fields remain compatible with the untouched iOS branch.
 
 ## How It Works
 
 ```mermaid
 flowchart TD
-    Start["Open NYC Discover"] --> Client{"Choose a client"}
-    Client -->|Desktop| Web["Desktop web planner"]
-    Client -->|iPhone| IOS["SwiftUI planner on the ios branch"]
+    Visitor["Open NYC Discover"] --> Brief["Enter location, time, budget, group, transport, and mood"]
+    Brief --> Geocode["Resolve an NYC starting point"]
+    Geocode --> Generate["POST /api/v1/itineraries/generate"]
+    Generate --> Mode{"Fixture or live mode?"}
 
-    Web --> Brief["Enter NYC location, time, budget, group, transport, and mood"]
-    IOS --> Brief
-    Brief --> Location{"Location resolved in NYC?"}
-    Location -->|No| Fix["Ask for another location or use the labeled demo origin"]
-    Fix --> Brief
-    Location -->|Yes| Request["Send itinerary generation request"]
+    Mode -->|Fixture| Fixtures["Deterministic places, events, and weather"]
+    Mode -->|Live| Guard["HMAC anonymous rate window in PostgreSQL"]
+    Guard --> Cache{"Fresh provider cache?"}
+    Cache -->|Yes| Inputs["Candidate places, events, and weather"]
+    Cache -->|No| Throttle["Reserve a provider call in PostgreSQL"]
+    Throttle --> Providers["Nominatim, Overpass, NYC Events, and NWS"]
+    Providers --> Stale{"Provider available?"}
+    Stale -->|Yes| SaveCache["Store fresh response"]
+    Stale -->|No| StaleCache["Use stale response when available"]
+    SaveCache --> Inputs
+    StaleCache --> Inputs
 
-    Request --> Reachable{"FastAPI reachable?"}
-    Reachable -->|No| Demo["Client returns the Upper West Side demo plans"]
-    Reachable -->|Yes| Validate["Validate same-day constraints"]
-    Validate --> Mode{"Fixture mode enabled?"}
-    Mode -->|Yes| Fixtures["Load deterministic fixture places, events, and weather"]
-    Mode -->|No| Providers["Query place, event, and weather providers"]
-    Providers <--> Cache[("PostgreSQL provider cache")]
-
-    Fixtures --> Engine["Filter candidates and build bounded itineraries"]
-    Cache --> Engine
+    Fixtures --> Engine["Filter constraints and build bounded itineraries"]
+    Inputs --> Engine
     Engine --> Fit{"At least one honest fit?"}
-    Fit -->|No| Empty["Return warnings and an adjustable empty state"]
-    Empty --> Brief
-    Fit -->|Yes| Plans["Return ranked plans with cost, time, confidence, and sources"]
-    Demo --> Results["Compare plan tabs, timeline stops, and map markers"]
-    Plans --> Results
-    Results --> Revise{"Change the brief or regenerate?"}
-    Revise -->|Yes| Brief
-    Revise -->|No| Verify["Verify estimates and open navigation before leaving"]
+    Fit -->|No| Adjust["Show warnings and reopen the brief"]
+    Fit -->|Yes| Results["Compare cost, time, confidence, timeline, and map"]
+    Adjust --> Brief
+
+    Results --> Share{"Create a share?"}
+    Share -->|No| Verify["Verify details before leaving"]
+    Share -->|Yes| Token["Verify the one-hour signed snapshot token"]
+    Token --> Redact["Remove origin label, coordinates, and regeneration seed"]
+    Redact --> Store[("Store every comparison plan for seven days")]
+    Store --> Shared["Read-only /share/id workspace with noindex"]
+    Shared --> NewPlan["Make your own plan"]
+    NewPlan --> Brief
 ```
 
 ## Quick Start
 
-1. Copy the environment file:
+### Docker
 
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Start PostgreSQL:
-
-   ```bash
-   docker compose up postgres -d
-   ```
-
-3. Start the API with Python 3.12:
-
-   ```bash
-   cd services/api
-   python3.12 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements-dev.txt
-   uvicorn app.main:app --reload --env-file ../../.env
-   ```
-
-4. Start the web app in a second terminal:
-
-   ```bash
-   npm ci
-   set -a; source .env; set +a
-   npm run dev
-   ```
-
-Open [http://localhost:3000](http://localhost:3000). The API docs are available at [http://localhost:8000/docs](http://localhost:8000/docs).
-
-### Combined Vercel Runtime
-
-After installing the Node and Python dependencies above, run both applications through the
-same routing layer used by a deployment:
+Docker runs PostgreSQL, applies migrations, then starts FastAPI and Next.js:
 
 ```bash
-npm run dev:vercel
-```
-
-Open [http://localhost:3000](http://localhost:3000). FastAPI is mounted at `/api`, including
-health checks at `/api/healthz` and documentation at `/api/docs`. This command forces fixture
-mode and disables the browser demo fallback, so a successful itinerary proves that the Python
-service is handling requests.
-
-The Docker Compose workflow remains available as the platform-independent fallback:
-
-```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-## Vercel Preview
+Open [http://localhost:3000](http://localhost:3000). API docs are at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-The repository is configured as one Vercel Services project: Next.js owns `/`, and FastAPI owns
-`/api`. Vercel Services is a beta feature available on Hobby plans; confirm that the account can
-select the **Services** framework preset before deploying.
+### Split Development
 
-Set these variables for the Preview environment only:
-
-```text
-FIXTURE_MODE=true
-NEXT_PUBLIC_API_URL=/api
-NEXT_PUBLIC_DEMO_FALLBACK=false
-```
-
-Do not set `DATABASE_URL` for the fixture preview. Link the repository root to a Vercel project,
-then create a non-production deployment with:
+Use Node 22/npm 10 and Python 3.12:
 
 ```bash
-npm run preview:vercel
+cp .env.example .env
+docker compose up postgres -d
+
+cd services/api
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+cd ../..
+
+set -a; source .env; set +a
+npm run db:migrate
 ```
 
-Vercel automatically promotes a new project's first deployment to Production, including an
-explicit `--target preview` deployment. To preserve this repository's preview-only policy, the
-script refuses to deploy when the linked project has no deployment history. An approved bootstrap
-decision is required before creating that first Vercel artifact.
-
-The preview is intentionally fixture-backed and is not a production release. Production and
-automatic Git deployments remain deferred until a shared cache provider is selected.
-
-## Live Data
-
-Set `FIXTURE_MODE=false` to enable live providers.
-
-- Subscribe to the free Event Calendar product in the [NYC API Developers Portal](https://api-portal.nyc.gov/) and set `NYC_EVENT_CALENDAR_KEY`.
-- Set a contactable `NYC_DISCOVER_USER_AGENT` before using Nominatim, Overpass, or the National Weather Service.
-- Provider URLs are environment-configurable so the application can move away from public instances without a code release.
-
-Live requests are rate-limited and cached. If a provider fails, the API uses a stale cache entry when possible and returns a warning instead of failing the entire itinerary request.
-
-## Commands
+Start FastAPI:
 
 ```bash
-# Backend tests that exercise the recommendation engine and provider cache
-cd services/api && pytest
+cd services/api
+source .venv/bin/activate
+uvicorn app.main:app --reload --env-file ../../.env
+```
 
-# Frontend unit tests
+Start Next.js in another terminal:
+
+```bash
+npm ci
+set -a; source .env; set +a
+npm run dev
+```
+
+### Combined Vercel Runtime
+
+After installing both dependency sets and applying migrations:
+
+```bash
+set -a; source .env; set +a
+npm run dev:vercel
+```
+
+This mounts FastAPI at `/api` on the same origin as Next.js. Health and docs are available at `/api/healthz` and `/api/docs`. The command forces fixture mode and disables browser fallback so a generated itinerary proves the Python service handled the request.
+
+## Environment
+
+`FIXTURE_MODE=true` requires no provider keys and can operate without PostgreSQL. Add a migrated `DATABASE_URL` and `SHARE_SIGNING_SECRET` when fixture-mode share testing is needed.
+
+Live mode fails closed unless all shared infrastructure is configured:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Neon pooled connection URL |
+| `NYC_EVENT_CALENDAR_KEY` | Primary or secondary key from **Event Calendar Public Developers** |
+| `NYC_DISCOVER_USER_AGENT` | Contactable identity for public providers |
+| `SHARE_SIGNING_SECRET` | HMAC signing for one-hour generation snapshots |
+| `REQUEST_HASH_SECRET` | HMAC key for anonymous rate-limit identifiers |
+| `SENTRY_DSN` | Server-side Sentry DSN |
+| `NEXT_PUBLIC_SENTRY_DSN` | Browser Sentry DSN |
+| `NEXT_PUBLIC_API_URL` | `/api` for every hosted environment |
+| `NEXT_PUBLIC_DEMO_FALLBACK` | Must be `false` when hosted |
+| `NEXT_PUBLIC_ALLOW_INDEXING` | `false` for bootstrap/Preview; `true` only for live Production |
+| `NEXT_PUBLIC_APP_URL` | Canonical public origin |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Protected Preview and rate-limit bypass for CI smoke tests |
+
+Never commit provider keys, database URLs, HMAC secrets, Sentry DSNs, or protection bypass values.
+
+## Data and Privacy
+
+- Live provider calls are serialized across instances using PostgreSQL reservations.
+- Anonymous limits store only an HMAC of Vercel's trusted forwarded IP, never the raw address.
+- Share links use unguessable 128-bit IDs and expire after seven days.
+- Shared snapshots remove the location label, origin coordinates, regeneration seed, and first-leg origin.
+- Sentry omits request bodies, query values, headers, cookies, user data, credentials, and individual share IDs.
+- Vercel analytics receives no custom location events.
+
+See the in-app `/privacy` page for the visitor-facing version.
+
+## Verification
+
+```bash
+# Web lint and unit tests
+npm run lint
 npm test
 
-# FastAPI tests
+# API tests; PostgreSQL cases skip unless TEST_DATABASE_URL is set
 npm run test:api
 
-# Build and lint
+# Full API suite with local PostgreSQL
+TEST_DATABASE_URL=postgresql://nycdiscover:nycdiscover@127.0.0.1:5432/nycdiscover \
+  npm run test:api
+
+# Production web build and same-origin browser tests
 npm run build
-npm run lint
+DATABASE_URL=postgresql://nycdiscover:nycdiscover@127.0.0.1:5432/nycdiscover \
+SHARE_SIGNING_SECRET=local-only-secret npm run test:e2e
 
-# All non-browser repository checks
-npm run check
-
-# Generate the TypeScript OpenAPI contract while the API is running
+# Regenerate the TypeScript contract while FastAPI is on port 8000
 npm run types:generate
 ```
 
+GitHub Actions runs Node 22/npm 10, Python 3.12, PostgreSQL 16 integration tests, the Next.js build, and Playwright against `vercel dev -L`.
+
+## Launch Runbook
+
+Vercel Services is beta and available to approved Hobby projects. Docker remains the portability fallback. Do not purchase a plan or switch architectures if Services access is unavailable.
+
+1. Provision Neon through the Vercel Marketplace in US East. Create `main` and `launch-preview` database branches and apply `npm run db:migrate` to both pooled URLs.
+2. Configure Production as fixture-backed and noindex. With zero deployment history, run the guarded first deployment:
+
+   ```bash
+   ALLOW_FIXTURE_PRODUCTION_BOOTSTRAP=1 npm run bootstrap:vercel
+   ```
+
+3. Configure Preview for live data, `launch-preview` storage, Sentry, and Vercel protection. Deploy with `npm run preview:vercel`.
+4. Validate Manhattan, Brooklyn, and Queens generation; current weather; city events; regeneration; sharing; map/keyboard behavior; Sentry delivery; and origin absence in PostgreSQL.
+5. Point Production at the Neon `main` branch, enable indexing, and deploy the exact tested commit with `vercel --prod`.
+6. Confirm `/api/healthz` reports `fixture_mode: false`, `database: postgres`, and `sharing_enabled: true` before connecting automatic Git production deployment.
+
+The fixture bootstrap remains the immediate rollback target.
+
 ## Product Boundaries
 
-The MVP is guest-only, NYC-only, and current-day-only. Budgets and cost totals are estimated per person. Travel legs are mode-aware estimates, not turn-by-turn routes. Missing price and duration details are always labeled as estimates and reduce confidence.
+Version one is guest-only, NYC-only, and current-day-only. It has no accounts, saved-plan dashboard, payments, route geometry, custom domain, or native-app launch. Costs and travel times are estimates; opening hours and availability should be verified before leaving.

@@ -18,6 +18,36 @@ interface MarkerEntry {
   popup: Popup;
 }
 
+function nearbyMarkerOffsets(plan: ItineraryPlan): [number, number][] {
+  const groups: number[][] = [];
+  for (const [index, step] of plan.steps.entries()) {
+    const group = groups.find((candidateIndexes) =>
+      candidateIndexes.some((candidateIndex) => {
+        const candidate = plan.steps[candidateIndex];
+        const latitudeMiles = (step.coordinates.latitude - candidate.coordinates.latitude) * 69;
+        const meanLatitude = (step.coordinates.latitude + candidate.coordinates.latitude) / 2;
+        const longitudeMiles =
+          (step.coordinates.longitude - candidate.coordinates.longitude) *
+          69 *
+          Math.cos((meanLatitude * Math.PI) / 180);
+        return Math.hypot(latitudeMiles, longitudeMiles) <= 0.075;
+      }),
+    );
+    if (group) group.push(index);
+    else groups.push([index]);
+  }
+
+  const offsets: [number, number][] = plan.steps.map(() => [0, 0]);
+  for (const group of groups) {
+    if (group.length === 1) continue;
+    group.forEach((stepIndex, position) => {
+      const angle = (position / group.length) * Math.PI * 2 - Math.PI / 2;
+      offsets[stepIndex] = [Math.round(Math.cos(angle) * 22), Math.round(Math.sin(angle) * 22)];
+    });
+  }
+  return offsets;
+}
+
 export function ItineraryMap({
   plan,
   activeStepId = null,
@@ -111,6 +141,7 @@ export function ItineraryMap({
         step.coordinates.longitude,
         step.coordinates.latitude,
       ]);
+      const markerOffsets = nearbyMarkerOffsets(plan);
 
       if (coordinates.length > 1) {
         map.addSource("route", {
@@ -153,7 +184,7 @@ export function ItineraryMap({
         element.addEventListener("blur", () => previewCallbackRef.current?.(null));
         element.addEventListener("click", () => selectCallbackRef.current?.(step.candidate_id));
 
-        const marker = new maplibregl.Marker({ element })
+        const marker = new maplibregl.Marker({ element, offset: markerOffsets[index] })
           .setLngLat([step.coordinates.longitude, step.coordinates.latitude])
           .addTo(map);
         const popup = new maplibregl.Popup({ offset: 18, closeOnClick: false }).setText(step.name);

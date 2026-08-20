@@ -25,6 +25,20 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    build: ./services/api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://nycdiscover:nycdiscover@postgres:5432/nycdiscover
+    command: ["python", "-m", "app.migrate"]
+    depends_on:
       postgres:
         condition: service_healthy
 

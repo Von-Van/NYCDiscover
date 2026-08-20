@@ -3,15 +3,21 @@ name = "nyc-discover-api"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "fastapi==0.116.1",
+  "fastapi==0.141.1",
+  "starlette==1.6.0",
   "uvicorn[standard]==0.35.0",
   "pydantic==2.11.7",
   "asyncpg==0.30.0",
+  "sentry-sdk[fastapi]==2.68.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["postgres: requires TEST_DATABASE_URL"]
 
 [tool.ruff]
 line-length = 100

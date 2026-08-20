@@ -126,3 +126,50 @@ def test_known_closed_hours_are_rejected():
     )
     result = generate_itineraries(base, [closed], fixture_weather())
     assert result.plans == ()
+
+
+def test_end_of_day_opening_hours_are_supported():
+    start = datetime(2026, 8, 20, 15, 0, tzinfo=ZoneInfo("America/New_York"))
+    base = request(start_at=start)
+    open_candidate = Candidate(
+        id="open-until-midnight",
+        name="Open gallery",
+        category="gallery",
+        mood_tags=("cultural",),
+        coordinates=Coordinates(40.7871, -73.9755),
+        duration_minutes=45,
+        cost_low=0,
+        cost_high=0,
+        indoor=True,
+        source_name="Test",
+        source_url=None,
+        confidence=0.9,
+        opening_hours="Mo-Su 00:00-24:00",
+    )
+
+    result = generate_itineraries(base, [open_candidate], fixture_weather())
+
+    assert result.plans
+
+
+def test_invalid_opening_hour_clock_does_not_crash_generation():
+    base = request()
+    unknown_hours = Candidate(
+        id="invalid-hours",
+        name="Unknown-hours gallery",
+        category="gallery",
+        mood_tags=("cultural",),
+        coordinates=Coordinates(40.7871, -73.9755),
+        duration_minutes=45,
+        cost_low=0,
+        cost_high=0,
+        indoor=True,
+        source_name="Test",
+        source_url=None,
+        confidence=0.9,
+        opening_hours="Mo-Su 25:00-27:00",
+    )
+
+    result = generate_itineraries(base, [unknown_hours], fixture_weather())
+
+    assert result.plans

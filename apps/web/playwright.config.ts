@@ -4,6 +4,10 @@ const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./e2e",
+  timeout: externalBaseURL ? 90_000 : 30_000,
+  expect: {
+    timeout: externalBaseURL ? 50_000 : 5_000,
+  },
   use: {
     baseURL: externalBaseURL ?? "http://127.0.0.1:3000",
     trace: "on-first-retry",
@@ -15,6 +19,7 @@ export default defineConfig({
         url: "http://127.0.0.1:3000/api/healthz",
         reuseExistingServer: !process.env.CI,
         timeout: 180_000,
+        gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       },
   projects: [
     { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },
