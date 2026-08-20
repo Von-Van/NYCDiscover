@@ -18,6 +18,25 @@ interface MarkerEntry {
   popup: Popup;
 }
 
+function coLocatedMarkerOffsets(plan: ItineraryPlan): [number, number][] {
+  const keys = plan.steps.map(
+    (step) =>
+      `${step.coordinates.latitude.toFixed(5)}:${step.coordinates.longitude.toFixed(5)}`,
+  );
+  const totals = new Map<string, number>();
+  const positions = new Map<string, number>();
+  for (const key of keys) totals.set(key, (totals.get(key) ?? 0) + 1);
+
+  return keys.map((key) => {
+    const total = totals.get(key) ?? 1;
+    if (total === 1) return [0, 0];
+    const position = positions.get(key) ?? 0;
+    positions.set(key, position + 1);
+    const angle = (position / total) * Math.PI * 2 - Math.PI / 2;
+    return [Math.round(Math.cos(angle) * 22), Math.round(Math.sin(angle) * 22)];
+  });
+}
+
 export function ItineraryMap({
   plan,
   activeStepId = null,
@@ -111,6 +130,7 @@ export function ItineraryMap({
         step.coordinates.longitude,
         step.coordinates.latitude,
       ]);
+      const markerOffsets = coLocatedMarkerOffsets(plan);
 
       if (coordinates.length > 1) {
         map.addSource("route", {
@@ -153,7 +173,7 @@ export function ItineraryMap({
         element.addEventListener("blur", () => previewCallbackRef.current?.(null));
         element.addEventListener("click", () => selectCallbackRef.current?.(step.candidate_id));
 
-        const marker = new maplibregl.Marker({ element })
+        const marker = new maplibregl.Marker({ element, offset: markerOffsets[index] })
           .setLngLat([step.coordinates.longitude, step.coordinates.latitude])
           .addTo(map);
         const popup = new maplibregl.Popup({ offset: 18, closeOnClick: false }).setText(step.name);

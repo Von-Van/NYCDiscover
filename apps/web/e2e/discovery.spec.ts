@@ -72,6 +72,47 @@ test("creates a seven-day share and opens the selected comparison workspace", as
   await expect(page.getByRole("button", { name: /Plan A/ })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("hosted shared workspace stays interactive and console-clean", async ({ page }, testInfo) => {
+  const sharedPath = process.env.PLAYWRIGHT_SHARED_PATH;
+  test.skip(!sharedPath, "Requires a live shared itinerary path");
+  test.skip(testInfo.project.name !== "desktop-chromium", "Desktop hosted smoke coverage");
+
+  const browserErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(sharedPath!);
+  await expect(page.getByRole("heading", { name: "A plan worth passing along." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Change the brief|Regenerate/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+
+  const planB = page.getByRole("button", { name: /Plan B/ });
+  await planB.focus();
+  await page.keyboard.press("Enter");
+  await expect(planB).toHaveAttribute("aria-pressed", "true");
+
+  const timelineStops = page.locator(".timeline > li");
+  const secondStop = timelineStops.nth(1);
+  const secondPin = page.locator(".map-shell .map-pin").nth(1);
+  expect(await timelineStops.count()).toBeGreaterThanOrEqual(2);
+  await expect(secondPin).toBeVisible();
+  await secondPin.hover();
+  await expect(secondStop).toHaveClass(/active/);
+  await secondPin.focus();
+  await page.keyboard.press("Enter");
+  await expect(secondPin).toHaveClass(/selected/);
+  await expect(page.locator(".maplibregl-popup-content")).toBeVisible();
+
+  for (const width of [1099, 720]) {
+    await page.setViewportSize({ width, height: 800 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  }
+  expect(browserErrors).toEqual([]);
+});
+
 test.describe("desktop editorial workspace", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop-chromium", "Desktop-specific acceptance coverage");
