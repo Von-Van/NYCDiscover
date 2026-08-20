@@ -164,21 +164,29 @@ def _known_open_during(opening_hours: str | None, start: datetime, end: datetime
         )
         if not match:
             continue
-        parsed_any = True
         first_day, last_day, open_time, close_time = match.groups()
         if first_day and not _day_in_range(day_code, first_day, last_day or first_day):
             continue
-        opened = start.replace(
-            hour=int(open_time[:2]), minute=int(open_time[3:]), second=0, microsecond=0
-        )
-        closed = start.replace(
-            hour=int(close_time[:2]), minute=int(close_time[3:]), second=0, microsecond=0
-        )
+        opened = _clock_on_date(start, open_time)
+        closed = _clock_on_date(start, close_time)
+        if opened is None or closed is None:
+            continue
+        parsed_any = True
         if closed <= opened:
             closed += timedelta(days=1)
         if opened <= start and end <= closed:
             return True
     return True if not parsed_any else False
+
+
+def _clock_on_date(reference: datetime, clock: str) -> datetime | None:
+    hour, minute = (int(part) for part in clock.split(":"))
+    if minute > 59 or hour > 24 or (hour == 24 and minute != 0):
+        return None
+    if hour == 24:
+        midnight = reference.replace(hour=0, minute=0, second=0, microsecond=0)
+        return midnight + timedelta(days=1)
+    return reference.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 def _day_in_range(day: str, first: str, last: str) -> bool:
