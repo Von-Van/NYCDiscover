@@ -18,23 +18,34 @@ interface MarkerEntry {
   popup: Popup;
 }
 
-function coLocatedMarkerOffsets(plan: ItineraryPlan): [number, number][] {
-  const keys = plan.steps.map(
-    (step) =>
-      `${step.coordinates.latitude.toFixed(5)}:${step.coordinates.longitude.toFixed(5)}`,
-  );
-  const totals = new Map<string, number>();
-  const positions = new Map<string, number>();
-  for (const key of keys) totals.set(key, (totals.get(key) ?? 0) + 1);
+function nearbyMarkerOffsets(plan: ItineraryPlan): [number, number][] {
+  const groups: number[][] = [];
+  for (const [index, step] of plan.steps.entries()) {
+    const group = groups.find((candidateIndexes) =>
+      candidateIndexes.some((candidateIndex) => {
+        const candidate = plan.steps[candidateIndex];
+        const latitudeMiles = (step.coordinates.latitude - candidate.coordinates.latitude) * 69;
+        const meanLatitude = (step.coordinates.latitude + candidate.coordinates.latitude) / 2;
+        const longitudeMiles =
+          (step.coordinates.longitude - candidate.coordinates.longitude) *
+          69 *
+          Math.cos((meanLatitude * Math.PI) / 180);
+        return Math.hypot(latitudeMiles, longitudeMiles) <= 0.075;
+      }),
+    );
+    if (group) group.push(index);
+    else groups.push([index]);
+  }
 
-  return keys.map((key) => {
-    const total = totals.get(key) ?? 1;
-    if (total === 1) return [0, 0];
-    const position = positions.get(key) ?? 0;
-    positions.set(key, position + 1);
-    const angle = (position / total) * Math.PI * 2 - Math.PI / 2;
-    return [Math.round(Math.cos(angle) * 22), Math.round(Math.sin(angle) * 22)];
-  });
+  const offsets: [number, number][] = plan.steps.map(() => [0, 0]);
+  for (const group of groups) {
+    if (group.length === 1) continue;
+    group.forEach((stepIndex, position) => {
+      const angle = (position / group.length) * Math.PI * 2 - Math.PI / 2;
+      offsets[stepIndex] = [Math.round(Math.cos(angle) * 22), Math.round(Math.sin(angle) * 22)];
+    });
+  }
+  return offsets;
 }
 
 export function ItineraryMap({
@@ -130,7 +141,7 @@ export function ItineraryMap({
         step.coordinates.longitude,
         step.coordinates.latitude,
       ]);
-      const markerOffsets = coLocatedMarkerOffsets(plan);
+      const markerOffsets = nearbyMarkerOffsets(plan);
 
       if (coordinates.length > 1) {
         map.addSource("route", {
