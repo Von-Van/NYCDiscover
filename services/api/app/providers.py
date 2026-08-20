@@ -59,6 +59,7 @@ class ProviderClient:
         ttl_seconds: int = 900,
         stale_seconds: int = 86400,
         minimum_interval_seconds: float = 0.2,
+        request_timeout_seconds: float = 12,
         method: str = "GET",
         body: bytes | None = None,
     ) -> tuple[dict[str, Any] | list[Any], bool]:
@@ -78,7 +79,7 @@ class ProviderClient:
         request = urllib.request.Request(full_url, data=body, headers=request_headers, method=method)
 
         def execute() -> dict[str, Any] | list[Any]:
-            with urllib.request.urlopen(request, timeout=12) as response:
+            with urllib.request.urlopen(request, timeout=request_timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
 
         try:
@@ -238,16 +239,32 @@ class ProviderHub:
         );
         out center tags 90;
         """
-        payload, stale = await self.client.fetch_json(
-            "overpass",
-            self.settings.overpass_url,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            body=urllib.parse.urlencode({"data": query}).encode(),
-            method="POST",
-            ttl_seconds=21600,
-            stale_seconds=172800,
-            minimum_interval_seconds=1.0,
+        payload = None
+        stale = False
+        fallback_used = False
+        last_error: Exception | None = None
+        endpoints = tuple(
+            dict.fromkeys((self.settings.overpass_url, self.settings.overpass_fallback_url))
         )
+        for index, endpoint in enumerate(endpoints):
+            try:
+                payload, stale = await self.client.fetch_json(
+                    "overpass",
+                    endpoint,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    body=urllib.parse.urlencode({"data": query}).encode(),
+                    method="POST",
+                    ttl_seconds=21600,
+                    stale_seconds=172800,
+                    minimum_interval_seconds=1.0,
+                    request_timeout_seconds=8 if index == 0 else 14,
+                )
+                fallback_used = index > 0
+                break
+            except Exception as exc:
+                last_error = exc
+        if payload is None:
+            raise last_error or RuntimeError("OpenStreetMap places are unavailable")
         candidates = []
         for element in payload.get("elements", []) if isinstance(payload, dict) else []:
             tags = element.get("tags", {})
@@ -278,8 +295,12 @@ class ProviderHub:
                     opening_hours=tags.get("opening_hours"),
                 )
             )
-        warnings = ("OpenStreetMap places were served from stale cache.",) if stale else ()
-        return candidates, warnings
+        warnings: list[str] = []
+        if stale:
+            warnings.append("OpenStreetMap places were served from stale cache.")
+        if fallback_used:
+            warnings.append("OpenStreetMap places used an alternate public endpoint.")
+        return candidates, tuple(warnings)
 
     async def _event_candidates(
         self, request: ItineraryInput

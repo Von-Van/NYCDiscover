@@ -24,6 +24,10 @@ class Settings:
         "NYC_EVENT_CALENDAR_URL", "https://api.nyc.gov/calendar/search"
     )
     overpass_url: str = os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+    overpass_fallback_url: str = os.getenv(
+        "OVERPASS_FALLBACK_URL",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    )
     nominatim_url: str = os.getenv(
         "NOMINATIM_URL", "https://nominatim.openstreetmap.org/search"
     )
