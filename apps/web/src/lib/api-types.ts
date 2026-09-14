@@ -67,6 +67,39 @@ export interface ItineraryPlan {
   total_cost_high: number;
   steps: TimelineStep[];
   estimate_notes: string[];
+  additional_options?: AdditionalOption[];
+}
+
+export interface AdditionalOption {
+  id: string;
+  replaces_candidate_id: string;
+  step: TimelineStep;
+  total_minutes: number;
+  total_cost_low: number;
+  total_cost_high: number;
+  confidence: number;
+}
+
+export interface CandidateData {
+  id: string;
+  name: string;
+  category: string;
+  mood_tags: string[];
+  coordinates: Coordinates;
+  duration_minutes: number;
+  cost_low: number;
+  cost_high: number;
+  indoor: boolean | null;
+  source_name: string;
+  source_url: string | null;
+  confidence: number;
+  start_at?: string | null;
+  end_at?: string | null;
+  estimate_notes?: string[];
+  popularity?: number | null;
+  opening_hours?: string | null;
+  brand?: string | null;
+  location_is_approximate?: boolean;
 }
 
 export interface GenerationResponse {
@@ -83,6 +116,16 @@ export interface GenerationResponse {
   generated_at: string;
   data_mode: "fixture" | "live";
   snapshot_token: string | null;
+  candidate_context?: CandidateData[] | null;
+  swap_token?: string | null;
+}
+
+export interface ApplyOptionRequest {
+  brief: GenerateRequest;
+  generation: GenerationResponse;
+  swap_token: string;
+  plan_id: string;
+  option_id: string;
 }
 
 export interface SharedBrief {

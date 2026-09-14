@@ -29,6 +29,8 @@ class Candidate:
     estimate_notes: tuple[str, ...] = ()
     popularity: float | None = None
     opening_hours: str | None = None
+    brand: str | None = None
+    location_is_approximate: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +87,17 @@ class TimelineStep:
 
 
 @dataclass(frozen=True, slots=True)
+class AdditionalOption:
+    id: str
+    replaces_candidate_id: str
+    step: TimelineStep
+    total_minutes: int
+    total_cost_low: float
+    total_cost_high: float
+    confidence: float
+
+
+@dataclass(frozen=True, slots=True)
 class ItineraryPlan:
     id: str
     title: str
@@ -96,6 +109,7 @@ class ItineraryPlan:
     total_cost_high: float
     steps: tuple[TimelineStep, ...]
     estimate_notes: tuple[str, ...] = ()
+    additional_options: tuple[AdditionalOption, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,3 +119,4 @@ class GenerationResult:
     plans: tuple[ItineraryPlan, ...]
     warnings: tuple[str, ...] = ()
     generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    candidate_context: tuple[Candidate, ...] = ()

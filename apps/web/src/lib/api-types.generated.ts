@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/itineraries/apply-option": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Swap Option */
+        post: operations["swap_option_v1_itineraries_apply_option_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/shares": {
         parameters: {
             query?: never;
@@ -93,6 +110,92 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdditionalOptionResponse */
+        "AdditionalOptionResponse-Input": {
+            /** Id */
+            id: string;
+            /** Replaces Candidate Id */
+            replaces_candidate_id: string;
+            step: components["schemas"]["TimelineStepResponse"];
+            /** Total Minutes */
+            total_minutes: number;
+            /** Total Cost Low */
+            total_cost_low: number;
+            /** Total Cost High */
+            total_cost_high: number;
+            /** Confidence */
+            confidence: number;
+        };
+        /** AdditionalOptionResponse */
+        "AdditionalOptionResponse-Output": {
+            /** Id */
+            id: string;
+            /** Replaces Candidate Id */
+            replaces_candidate_id: string;
+            step: components["schemas"]["TimelineStepResponse"];
+            /** Total Minutes */
+            total_minutes: number;
+            /** Total Cost Low */
+            total_cost_low: number;
+            /** Total Cost High */
+            total_cost_high: number;
+            /** Confidence */
+            confidence: number;
+        };
+        /** ApplyOptionRequest */
+        ApplyOptionRequest: {
+            brief: components["schemas"]["GenerateRequest"];
+            generation: components["schemas"]["GenerationResponse-Input"];
+            /** Swap Token */
+            swap_token: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Option Id */
+            option_id: string;
+        };
+        /** CandidateResponse */
+        CandidateResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string;
+            /** Mood Tags */
+            mood_tags: string[];
+            coordinates: components["schemas"]["CoordinatesSchema"];
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** Cost Low */
+            cost_low: number;
+            /** Cost High */
+            cost_high: number;
+            /** Indoor */
+            indoor: boolean | null;
+            /** Source Name */
+            source_name: string;
+            /** Source Url */
+            source_url: string | null;
+            /** Confidence */
+            confidence: number;
+            /** Start At */
+            start_at?: string | null;
+            /** End At */
+            end_at?: string | null;
+            /** Estimate Notes */
+            estimate_notes?: string[];
+            /** Popularity */
+            popularity?: number | null;
+            /** Opening Hours */
+            opening_hours?: string | null;
+            /** Brand */
+            brand?: string | null;
+            /**
+             * Location Is Approximate
+             * @default false
+             */
+            location_is_approximate: boolean;
+        };
         /** CoordinatesSchema */
         CoordinatesSchema: {
             /** Latitude */
@@ -181,6 +284,10 @@ export interface components {
             data_mode: "fixture" | "live";
             /** Snapshot Token */
             snapshot_token?: string | null;
+            /** Candidate Context */
+            candidate_context?: components["schemas"]["CandidateResponse"][] | null;
+            /** Swap Token */
+            swap_token?: string | null;
         };
         /** GenerationResponse */
         "GenerationResponse-Output": {
@@ -201,6 +308,10 @@ export interface components {
             data_mode: "fixture" | "live";
             /** Snapshot Token */
             snapshot_token?: string | null;
+            /** Candidate Context */
+            candidate_context?: components["schemas"]["CandidateResponse"][] | null;
+            /** Swap Token */
+            swap_token?: string | null;
         };
         /** GeocodeResponse */
         GeocodeResponse: {
@@ -256,6 +367,8 @@ export interface components {
             steps: components["schemas"]["TimelineStepResponse"][];
             /** Estimate Notes */
             estimate_notes: string[];
+            /** Additional Options */
+            additional_options?: components["schemas"]["AdditionalOptionResponse-Input"][];
         };
         /** ItineraryPlanResponse */
         "ItineraryPlanResponse-Output": {
@@ -279,6 +392,8 @@ export interface components {
             steps: components["schemas"]["TimelineStepResponse"][];
             /** Estimate Notes */
             estimate_notes: string[];
+            /** Additional Options */
+            additional_options?: components["schemas"]["AdditionalOptionResponse-Output"][];
         };
         /** SharedBrief */
         SharedBrief: {
@@ -475,6 +590,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["GenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationResponse-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    swap_option_v1_itineraries_apply_option_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyOptionRequest"];
             };
         };
         responses: {

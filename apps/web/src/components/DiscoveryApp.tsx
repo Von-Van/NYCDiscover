@@ -1,13 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { createShare, generateItineraries, geocodeLocation } from "@/lib/api";
-import type { GenerateRequest, GenerationResponse } from "@/lib/api-types";
-import { buildDemoResponse } from "@/lib/demo-data";
+import { applyItineraryOption, createShare, generateItineraries, geocodeLocation } from "@/lib/api";
+import type { AdditionalOption, GenerateRequest, GenerationResponse } from "@/lib/api-types";
+import { applyDemoOption, buildDemoResponse } from "@/lib/demo-data";
 import { toGenerateRequest, validateForm, type DiscoveryForm } from "@/lib/form";
 import { getPlanComparisonLabels } from "@/lib/plan-comparison";
 import { BriefFields, initialDiscoveryForm } from "./BriefFields";
 import { ItineraryMap } from "./ItineraryMap";
+import { AdditionalOptions } from "./AdditionalOptions";
 
 const fallbackCoordinates = { latitude: 40.787, longitude: -73.9754 };
 
@@ -56,6 +57,11 @@ export function DiscoveryApp() {
   const [shareUrl, setShareUrl] = useState("");
   const [shareStatus, setShareStatus] = useState<"idle" | "creating" | "ready" | "copied" | "error">("idle");
   const [shareMessage, setShareMessage] = useState("");
+  const [localDemo, setLocalDemo] = useState(false);
+  const [pendingOptionId, setPendingOptionId] = useState<string | null>(null);
+  const [swapStatus, setSwapStatus] = useState("");
+  const [swapError, setSwapError] = useState("");
+  const mutationPending = useRef(false);
   const timelineRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   const activePlan = useMemo(
@@ -68,6 +74,7 @@ export function DiscoveryApp() {
   );
   const displayForm = committedForm ?? draftForm;
   const activeStepId = previewStepId ?? selectedStepId;
+  const busy = isUpdating || pendingOptionId !== null || shareStatus === "creating";
 
   useEffect(() => {
     if (!inspectorOpen) return;
@@ -88,6 +95,7 @@ export function DiscoveryApp() {
   }
 
   function openInspector() {
+    if (mutationPending.current) return;
     setDraftForm(copyForm(committedForm ?? draftForm));
     setErrors([]);
     setMessage("");
@@ -102,6 +110,7 @@ export function DiscoveryApp() {
   }
 
   function returnToForm() {
+    if (mutationPending.current) return;
     setDraftForm(copyForm(committedForm ?? draftForm));
     setInspectorOpen(false);
     setErrors([]);
@@ -163,10 +172,12 @@ export function DiscoveryApp() {
   }
 
   async function runGeneration(form: DiscoveryForm, nextSeed: number, mode: GenerationMode) {
+    if (mutationPending.current) return false;
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (formErrors.length > 0) return false;
 
+    mutationPending.current = true;
     const request = toGenerateRequest(form, nextSeed);
     if (mode === "initial") setPhase("loading");
     else setIsUpdating(true);
@@ -174,15 +185,20 @@ export function DiscoveryApp() {
 
     try {
       let result: GenerationResponse;
+      let usingLocalDemo = false;
       try {
         result = await generateItineraries(request);
       } catch (error) {
         if (process.env.NEXT_PUBLIC_DEMO_FALLBACK === "false") throw error;
         result = buildDemoResponse(request);
+        usingLocalDemo = true;
       }
 
       const committed = copyForm(form);
       setResponse(result);
+      setLocalDemo(usingLocalDemo);
+      setSwapStatus("");
+      setSwapError("");
       setCommittedRequest(request);
       setCommittedForm(committed);
       setDraftForm(copyForm(committed));
@@ -202,6 +218,7 @@ export function DiscoveryApp() {
       if (mode === "update") setInspectorOpen(true);
       return false;
     } finally {
+      mutationPending.current = false;
       if (mode !== "initial") setIsUpdating(false);
     }
   }
@@ -229,12 +246,51 @@ export function DiscoveryApp() {
   }
 
   function activatePlan(planId: string) {
+    if (mutationPending.current) return;
     setActivePlanId(planId);
     setSelectedStepId(null);
     setPreviewStepId(null);
     setShareUrl("");
     setShareStatus("idle");
     setShareMessage("");
+    setSwapStatus("");
+    setSwapError("");
+  }
+
+  async function swapOption(option: AdditionalOption) {
+    if (mutationPending.current || inspectorOpen || !response || !committedRequest || !activePlan) return false;
+    if (!localDemo && !response.swap_token) return false;
+    mutationPending.current = true;
+    setPendingOptionId(option.id);
+    setSwapError("");
+    setSwapStatus("Updating your route…");
+    const previous = activePlan.steps.find((step) => step.candidate_id === option.replaces_candidate_id);
+    try {
+      const updated = localDemo
+        ? applyDemoOption(committedRequest, response, activePlan.id, option.id)
+        : await applyItineraryOption({
+          brief: committedRequest,
+          generation: response,
+          swap_token: response.swap_token!,
+          plan_id: activePlan.id,
+          option_id: option.id,
+        });
+      setResponse(updated);
+      setSelectedStepId(null);
+      setPreviewStepId(null);
+      setShareUrl("");
+      setShareStatus("idle");
+      setShareMessage("");
+      setSwapStatus(`${option.step.name} replaced ${previous?.name ?? "your stop"}. Route and estimates updated.`);
+      return true;
+    } catch (error) {
+      setSwapStatus("");
+      setSwapError(error instanceof Error ? error.message : "Could not swap this stop. Please try again.");
+      return false;
+    } finally {
+      setPendingOptionId(null);
+      mutationPending.current = false;
+    }
   }
 
   async function copyShareUrl(url: string) {
@@ -249,6 +305,7 @@ export function DiscoveryApp() {
   }
 
   async function sharePlan() {
+    if (mutationPending.current) return;
     if (shareUrl) {
       try {
         await copyShareUrl(shareUrl);
@@ -259,6 +316,7 @@ export function DiscoveryApp() {
       return;
     }
     if (!response?.snapshot_token || !committedRequest || !activePlanId) return;
+    mutationPending.current = true;
     setShareStatus("creating");
     setShareMessage("Creating a private seven-day snapshot…");
     try {
@@ -274,6 +332,8 @@ export function DiscoveryApp() {
     } catch (error) {
       setShareStatus("error");
       setShareMessage(error instanceof Error ? error.message : "Could not create the link.");
+    } finally {
+      mutationPending.current = false;
     }
   }
 
@@ -289,7 +349,7 @@ export function DiscoveryApp() {
   return (
     <main className="site-shell">
       <header className="masthead">
-        <button className="brand" onClick={returnToForm} aria-label="NYC Discover home">
+        <button className="brand" onClick={returnToForm} disabled={busy || phase === "loading"} aria-label="NYC Discover home">
           <span className="brand-box">NYC</span>
           <span>DISCOVER</span>
         </button>
@@ -369,19 +429,20 @@ export function DiscoveryApp() {
                   <button
                     className="text-button"
                     onClick={openInspector}
+                    disabled={busy}
                     aria-expanded={inspectorOpen}
                     aria-controls="brief-inspector"
                   >
                     Change the brief
                   </button>
-                  <button className="outline-button" onClick={regenerate} disabled={isUpdating}>
+                  <button className="outline-button" onClick={regenerate} disabled={busy}>
                     {isUpdating ? "Working…" : "Regenerate"}
                   </button>
                   {response.snapshot_token && (
                     <button
                       className="share-button"
                       onClick={sharePlan}
-                      disabled={isUpdating || shareStatus === "creating"}
+                      disabled={busy}
                     >
                       {shareStatus === "creating"
                         ? "Creating…"
@@ -455,6 +516,7 @@ export function DiscoveryApp() {
                         className={activePlan.id === plan.id ? "active" : ""}
                         aria-pressed={activePlan.id === plan.id}
                         onClick={() => activatePlan(plan.id)}
+                        disabled={busy}
                       >
                         <span className="plan-tab-topline">
                           <span>Plan {String.fromCharCode(65 + index)}</span>
@@ -539,6 +601,17 @@ export function DiscoveryApp() {
                           </li>
                         ))}
                       </ol>
+                      {(localDemo || response.swap_token) && (
+                        <AdditionalOptions
+                          key={activePlan.id}
+                          plan={activePlan}
+                          disabled={busy || inspectorOpen}
+                          pendingOptionId={pendingOptionId}
+                          status={swapStatus}
+                          error={swapError}
+                          onSwap={swapOption}
+                        />
+                      )}
                       <div className="estimate-note">
                         <strong>Before you go</strong>
                         <ul>{activePlan.estimate_notes.map((note) => <li key={note}>{note}</li>)}</ul>

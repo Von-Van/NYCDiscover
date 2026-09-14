@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import random
 import re
-from dataclasses import dataclass
+import unicodedata
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from .domain import (
+    AdditionalOption,
     Candidate,
     Coordinates,
     GenerationResult,
@@ -45,6 +49,102 @@ CATEGORY_LABELS = {
     "landmark": "Landmark",
 }
 
+# Categories that are a happening rather than a place you can walk into any day.
+LIVE_CATEGORIES = frozenset({"event", "comedy", "music", "trivia"})
+FOOD_DRINK_CATEGORIES = frozenset({"restaurant", "cafe", "dessert", "bar"})
+
+
+def allows_multiple_food_stops(request: ItineraryInput) -> bool:
+    return set(request.moods or (request.mood,)) == {"food-focused"}
+
+
+# A standing venue is open again tomorrow, so it starts well below anything with
+# a fixed start time; a one-day-only happening reaches the top of the range.
+EVERGREEN_TIMELINESS = 0.25
+UNSCHEDULED_LIVE_TIMELINESS = 0.55
+MULTI_DAY_TIMELINESS = 0.70
+
+# Branches of a large chain are ranked below independent neighborhood options.
+# The multiplier demotes them rather than removing them, so a chain still
+# surfaces when it is genuinely the only thing that fits the brief.
+CHAIN_SCORE_MULTIPLIER = 0.65
+
+# Curated major chains only: having a brand tag does not establish a national
+# footprint. Unknown brands and NYC/NJ regional businesses keep their normal
+# scores. For example Dallas BBQ remains local (dallasbbq.com/reservations),
+# whereas Dave's spans many states (store.daveshotchicken.com/location/).
+# Normalize punctuation/accents and match whole words for unbranded locations.
+CHAIN_NAMES = frozenset(
+    {
+        # Coffee and bakery
+        "starbucks",
+        "dunkin",
+        "pret a manger",
+        "le pain quotidien",
+        "gregorys coffee",
+        "blue bottle coffee",
+        "bluestone lane",
+        "joe and the juice",
+        "peets coffee",
+        "tim hortons",
+        "au bon pain",
+        "panera bread",
+        "krispy kreme",
+        "cinnabon",
+        "insomnia cookies",
+        "crumbl",
+        # Fast and fast-casual
+        "mcdonalds",
+        "burger king",
+        "wendys",
+        "chipotle",
+        "sweetgreen",
+        "chopt",
+        "just salad",
+        "chick fil a",
+        "daves hot chicken",
+        "popeyes",
+        "taco bell",
+        "five guys",
+        "shake shack",
+        "wingstop",
+        "panda express",
+        "sbarro",
+        "potbelly",
+        "jersey mikes",
+        "white castle",
+        "halal guys",
+        "dominos",
+        "papa johns",
+        "pizza hut",
+        # Sit-down chains
+        "applebees",
+        "tgi fridays",
+        "olive garden",
+        "red lobster",
+        "cheesecake factory",
+        "buffalo wild wings",
+        "hooters",
+        "ihop",
+        "dennys",
+        "outback steakhouse",
+        "hard rock cafe",
+        "planet hollywood",
+        "bubba gump",
+        # Dessert
+        "baskin robbins",
+        "cold stone creamery",
+        "haagen dazs",
+        "16 handles",
+        # Retail
+        "barnes and noble",
+        "books a million",
+    }
+)
+# Short ambiguous names require an explicit brand match, not a name substring:
+# a Subway sandwich franchise counts; the unrelated local Subway Inn does not.
+CHAIN_BRANDS = CHAIN_NAMES | {"subway"}
+
 
 def haversine_miles(a: Coordinates, b: Coordinates) -> float:
     radius = 3958.8
@@ -78,6 +178,51 @@ def weather_fit(candidate: Candidate, weather: WeatherContext) -> float:
     return 0.75
 
 
+def timeliness_fit(candidate: Candidate, request: ItineraryInput) -> float:
+    """Rank things happening at a fixed time above places that are open any day."""
+    if candidate.start_at is None:
+        return (
+            UNSCHEDULED_LIVE_TIMELINESS
+            if candidate.category in LIVE_CATEGORIES
+            else EVERGREEN_TIMELINESS
+        )
+    finish = candidate.end_at or candidate.start_at + timedelta(
+        minutes=candidate.duration_minutes
+    )
+    run_hours = (finish - candidate.start_at).total_seconds() / 3600
+    # A run longer than a day is a standing exhibition, not a one-off happening.
+    return 1.0 if run_hours <= 24 else MULTI_DAY_TIMELINESS
+
+
+def _normalize_place_name(name: str) -> str:
+    normalized = name.lower().replace("&", " and ").replace("'", "").replace("’", "")
+    decomposed = unicodedata.normalize("NFKD", normalized)
+    unaccented = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", unaccented).split())
+
+
+def is_chain_location(candidate: Candidate) -> bool:
+    """Known major chain; local and unclassified brands are not penalized."""
+    if candidate.brand:
+        return any(_normalize_place_name(brand) in CHAIN_BRANDS for brand in candidate.brand.split(";"))
+    words = _normalize_place_name(candidate.name).split()
+    for chain in CHAIN_NAMES:
+        chain_words = chain.split()
+        span = len(chain_words)
+        if any(
+            words[index : index + span] == chain_words
+            for index in range(len(words) - span + 1)
+        ):
+            return True
+    return False
+
+
+def is_live_happening(candidate: Candidate) -> bool:
+    return candidate.start_at is not None or candidate.category in LIVE_CATEGORIES
+
+
 def candidate_score(
     candidate: Candidate,
     request: ItineraryInput,
@@ -91,19 +236,26 @@ def candidate_score(
     mood_matches = len(set(selected_moods) & set(candidate.mood_tags))
     mood = 0.30 if mood_matches == 0 else 0.75 + 0.25 * mood_matches / len(selected_moods)
     proximity = max(0.0, 1.0 - (distance / max(request.radius_miles, 0.1)))
+    if candidate.location_is_approximate:
+        # The distance came from a neighborhood centroid, so it is not precise
+        # enough to earn a full proximity bonus (or a full penalty). Shrink it
+        # toward neutral so a lucky centroid cannot outrank a verified address.
+        proximity = proximity * 0.5 + 0.25
     budget = _budget_fit(candidate, request)
     time_efficiency = min(1.0, candidate.duration_minutes / max(request.available_minutes * 0.35, 1))
     diversity = (1.0 if candidate.category not in used_categories else 0.2) * _group_fit(
         candidate, request.group_size
     )
-    return (
-        mood * 0.30
-        + time_efficiency * 0.25
-        + proximity * 0.20
-        + budget * 0.15
-        + weather_fit(candidate, weather) * 0.05
-        + diversity * 0.05
+    score = (
+        mood * 0.26
+        + timeliness_fit(candidate, request) * 0.18
+        + time_efficiency * 0.20
+        + proximity * 0.16
+        + budget * 0.12
+        + weather_fit(candidate, weather) * 0.04
+        + diversity * 0.04
     )
+    return score * (CHAIN_SCORE_MULTIPLIER if is_chain_location(candidate) else 1.0)
 
 
 def _budget_fit(candidate: Candidate, request: ItineraryInput) -> float:
@@ -202,6 +354,7 @@ class _Beam:
     total_cost_high: float
     score: float
     idle_minutes: int
+    live_steps: int = 0
 
 
 def _extend_beam(
@@ -210,6 +363,12 @@ def _extend_beam(
     request: ItineraryInput,
     weather: WeatherContext,
 ) -> _Beam | None:
+    if (
+        candidate.category in FOOD_DRINK_CATEGORIES
+        and not allows_multiple_food_stops(request)
+        and any(step.category in FOOD_DRINK_CATEGORIES for step in beam.steps)
+    ):
+        return None
     distance = haversine_miles(beam.current_coordinates, candidate.coordinates)
     travel_minutes = estimate_travel_minutes(distance, request.transport_mode)
     arrival = beam.current_time + timedelta(minutes=travel_minutes)
@@ -223,7 +382,7 @@ def _extend_beam(
         activity_start = arrival
     activity_end = candidate.end_at or activity_start + timedelta(minutes=candidate.duration_minutes)
     window_end = request.start_at + timedelta(minutes=request.available_minutes)
-    if activity_end > window_end:
+    if activity_end <= activity_start or activity_end > window_end:
         return None
     if not _known_open_during(candidate.opening_hours, activity_start, activity_end):
         return None
@@ -232,7 +391,10 @@ def _extend_beam(
     used_categories = tuple(step.category for step in beam.steps)
     score = candidate_score(candidate, request, weather, beam.current_coordinates, used_categories)
     score -= min(0.18, travel_minutes / max(request.available_minutes, 1) * 0.6)
-    score -= min(0.12, idle_minutes / max(request.available_minutes, 1) * 0.7)
+    # Waiting for a fixed showtime is part of the plan, so it costs less than dead
+    # time in front of a place that simply has not opened yet.
+    idle_cap, idle_weight = (0.06, 0.35) if candidate.start_at else (0.12, 0.7)
+    score -= min(idle_cap, idle_minutes / max(request.available_minutes, 1) * idle_weight)
     leg = TravelLeg(
         mode=request.transport_mode,
         minutes=travel_minutes,
@@ -263,6 +425,7 @@ def _extend_beam(
         total_cost_high=beam.total_cost_high + candidate.cost_high,
         score=beam.score + score,
         idle_minutes=beam.idle_minutes + idle_minutes,
+        live_steps=beam.live_steps + (1 if is_live_happening(candidate) else 0),
     )
 
 
@@ -310,6 +473,9 @@ def _beam_rank(beam: _Beam, request: ItineraryInput) -> float:
     return (
         beam.score / len(beam.steps)
         + len(beam.steps) * 0.11
+        # Reward a plan built around something live. The bonus saturates at two so
+        # a plan still leaves room for food and standing places.
+        + min(2, beam.live_steps) * 0.08
         + min(1.0, active_minutes / max(request.available_minutes, 1)) * 0.16
         - beam.idle_minutes / max(request.available_minutes, 1) * 0.25
     )
@@ -323,6 +489,101 @@ def _plans_are_too_similar(left: _Beam, right: _Beam) -> bool:
     return shared == smaller_size or shared / smaller_size >= 0.75
 
 
+def _empty_beam(request: ItineraryInput) -> _Beam:
+    return _Beam((), request.start_at, request.coordinates, 0, 0, 0, 0)
+
+
+def _rebuild_route(
+    request: ItineraryInput,
+    candidates: list[Candidate],
+    weather: WeatherContext,
+) -> _Beam | None:
+    if not candidates or len({candidate.id for candidate in candidates}) != len(candidates):
+        return None
+    beam = _empty_beam(request)
+    for candidate in candidates:
+        if not _candidate_is_possible(candidate, request, weather):
+            return None
+        extended = _extend_beam(beam, candidate, request, weather)
+        if extended is None:
+            return None
+        beam = extended
+    return beam
+
+
+def _option_id(plan: ItineraryPlan, stop_index: int, candidate: Candidate) -> str:
+    material = [plan.id, [step.candidate_id for step in plan.steps], stop_index, candidate.id]
+    return hashlib.sha256(json.dumps(material).encode()).hexdigest()[:24]
+
+
+def with_additional_options(
+    request: ItineraryInput,
+    candidates: tuple[Candidate, ...],
+    weather: WeatherContext,
+    plans: tuple[ItineraryPlan, ...],
+) -> tuple[ItineraryPlan, ...]:
+    """Offer only replacements that can complete the entire ordered itinerary."""
+    by_id = {candidate.id: candidate for candidate in candidates}
+    selected_ids = {step.candidate_id for plan in plans for step in plan.steps}
+    unused = [candidate for candidate in candidates if candidate.id not in selected_ids]
+    updated = []
+    for plan in plans:
+        route = [by_id[step.candidate_id] for step in plan.steps]
+        options = []
+        for index, step in enumerate(plan.steps):
+            ranked = []
+            for candidate in unused:
+                replacement_route = [*route[:index], candidate, *route[index + 1 :]]
+                beam = _rebuild_route(request, replacement_route, weather)
+                if beam is None:
+                    continue
+                preview = _beam_to_plan(beam, request, 0)
+                option = AdditionalOption(
+                    id=_option_id(plan, index, candidate),
+                    replaces_candidate_id=step.candidate_id,
+                    step=preview.steps[index],
+                    total_minutes=preview.total_minutes,
+                    total_cost_low=preview.total_cost_low,
+                    total_cost_high=preview.total_cost_high,
+                    confidence=preview.confidence,
+                )
+                ranked.append((_beam_rank(beam, request), candidate.id, option))
+            ranked.sort(key=lambda item: (-item[0], item[1]))
+            options.extend(item[2] for item in ranked)
+        updated.append(replace(plan, additional_options=tuple(options)))
+    return tuple(updated)
+
+
+def apply_option(
+    request: ItineraryInput,
+    candidates: tuple[Candidate, ...],
+    weather: WeatherContext,
+    plans: tuple[ItineraryPlan, ...],
+    plan_id: str,
+    option_id: str,
+) -> tuple[ItineraryPlan, ...]:
+    plan = next((plan for plan in plans if plan.id == plan_id), None)
+    option = next((item for item in plan.additional_options if item.id == option_id), None) if plan else None
+    if plan is None or option is None:
+        raise ValueError("This option is no longer available. Choose another option or regenerate.")
+    by_id = {candidate.id: candidate for candidate in candidates}
+    if any(option.step.candidate_id == step.candidate_id for item in plans for step in item.steps):
+        raise ValueError("This stop is already in a recommended plan.")
+    try:
+        route = [
+            by_id[option.step.candidate_id if step.candidate_id == option.replaces_candidate_id else step.candidate_id]
+            for step in plan.steps
+        ]
+    except KeyError as exc:
+        raise ValueError("The options have expired. Regenerate to continue editing.") from exc
+    beam = _rebuild_route(request, route, weather)
+    if beam is None:
+        raise ValueError("This replacement no longer fits your brief. Choose another option.")
+    replacement = replace(_beam_to_plan(beam, request, 0), id=plan.id)
+    updated = tuple(replacement if item.id == plan.id else item for item in plans)
+    return with_additional_options(request, candidates, weather, updated)
+
+
 def generate_itineraries(
     request: ItineraryInput,
     candidates: list[Candidate],
@@ -330,7 +591,7 @@ def generate_itineraries(
     warnings: tuple[str, ...] = (),
 ) -> GenerationResult:
     rng = random.Random(request.regeneration_seed)
-    feasible = [item for item in candidates if _candidate_is_possible(item, request, weather)]
+    feasible = list({item.id: item for item in candidates if _candidate_is_possible(item, request, weather)}.values())
     rng.shuffle(feasible)
     feasible.sort(
         key=lambda item: candidate_score(item, request, weather)
@@ -380,4 +641,11 @@ def generate_itineraries(
         if len(selected) == 3:
             break
     plans = tuple(_beam_to_plan(beam, request, index) for index, beam in enumerate(selected))
-    return GenerationResult(request=request, weather=weather, plans=plans, warnings=warnings)
+    context = tuple(feasible)
+    return GenerationResult(
+        request=request,
+        weather=weather,
+        plans=with_additional_options(request, context, weather, plans),
+        warnings=warnings,
+        candidate_context=context,
+    )

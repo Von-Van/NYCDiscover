@@ -6,6 +6,8 @@ from app.engine import (
     candidate_score,
     estimate_travel_minutes,
     generate_itineraries,
+    is_chain_location,
+    timeliness_fit,
     weather_fit,
 )
 from app.fixtures import fixture_candidates, fixture_weather
@@ -233,3 +235,129 @@ def test_invalid_opening_hour_clock_does_not_crash_generation():
     result = generate_itineraries(base, [unknown_hours], fixture_weather())
 
     assert result.plans
+
+
+def timed_candidate(**overrides) -> Candidate:
+    values = {
+        "id": "candidate",
+        "name": "Neighborhood spot",
+        "category": "cafe",
+        "mood_tags": ("social", "relaxing"),
+        "coordinates": Coordinates(40.7875, -73.9760),
+        "duration_minutes": 45,
+        "cost_low": 5,
+        "cost_high": 12,
+        "indoor": True,
+        "source_name": "Test",
+        "source_url": None,
+        "confidence": 0.75,
+    }
+    values.update(overrides)
+    return Candidate(**values)
+
+
+def test_live_happenings_outrank_always_open_places():
+    base = request()
+    always_open = timed_candidate(id="always-open")
+    tonight_only = timed_candidate(
+        id="tonight-only",
+        category="music",
+        start_at=base.start_at + timedelta(minutes=40),
+        end_at=base.start_at + timedelta(minutes=115),
+    )
+
+    assert timeliness_fit(tonight_only, base) > timeliness_fit(always_open, base)
+    assert candidate_score(tonight_only, base, fixture_weather()) > candidate_score(
+        always_open, base, fixture_weather()
+    )
+
+
+def test_multi_day_run_scores_below_a_one_day_happening():
+    base = request()
+    tonight_only = timed_candidate(
+        id="tonight-only",
+        start_at=base.start_at + timedelta(minutes=30),
+        end_at=base.start_at + timedelta(minutes=120),
+    )
+    standing_exhibition = timed_candidate(
+        id="standing",
+        start_at=base.start_at + timedelta(minutes=30),
+        end_at=base.start_at + timedelta(days=9),
+    )
+
+    assert timeliness_fit(tonight_only, base) > timeliness_fit(standing_exhibition, base)
+
+
+def test_chain_locations_score_below_independent_places():
+    base = request()
+    independent = timed_candidate(id="independent", name="Hungarian Pastry Shop")
+    by_name = timed_candidate(id="by-name", name="Starbucks Reserve")
+    by_brand = timed_candidate(id="by-brand", name="Corner Coffee", brand="Gregorys Coffee")
+
+    assert is_chain_location(independent) is False
+    assert is_chain_location(by_name) is True
+    assert is_chain_location(by_brand) is True
+    independent_score = candidate_score(independent, base, fixture_weather())
+    assert candidate_score(by_name, base, fixture_weather()) < independent_score
+    assert candidate_score(by_brand, base, fixture_weather()) < independent_score
+
+
+def test_chain_name_matching_ignores_unrelated_local_names():
+    for name in ("Subway Inn", "Peetsville Diner", "Joe's Pizza", "Panera Vista Cantina"):
+        assert is_chain_location(timed_candidate(name=name)) is False
+    for name in ("Dunkin'", "Häagen-Dazs Shop", "Barnes & Noble", "Chick-fil-A"):
+        assert is_chain_location(timed_candidate(name=name)) is True
+
+
+def test_top_plan_prefers_the_live_show_when_only_one_stop_fits():
+    base = request(available_minutes=120)
+    always_open = timed_candidate(id="always-open", duration_minutes=60)
+    tonight_only = timed_candidate(
+        id="tonight-only",
+        category="music",
+        duration_minutes=75,
+        start_at=base.start_at + timedelta(minutes=30),
+        end_at=base.start_at + timedelta(minutes=105),
+    )
+
+    result = generate_itineraries(base, [always_open, tonight_only], fixture_weather())
+
+    assert result.plans
+    assert [step.candidate_id for step in result.plans[0].steps] == ["tonight-only"]
+
+
+def test_top_plan_prefers_the_independent_place_over_the_chain():
+    base = request(available_minutes=60, mood="relaxing")
+    chain = timed_candidate(id="chain", name="Starbucks")
+    independent = timed_candidate(id="independent", name="Hungarian Pastry Shop")
+
+    result = generate_itineraries(base, [chain, independent], fixture_weather())
+
+    assert result.plans
+    assert [step.candidate_id for step in result.plans[0].steps] == ["independent"]
+    assert any(
+        step.candidate_id == "chain" for plan in result.plans for step in plan.steps
+    ), "a chain should still be offered when it is one of the few things that fit"
+
+
+def test_ballparked_location_does_not_earn_a_full_proximity_bonus():
+    base = request()
+    nearby = dict(coordinates=Coordinates(40.7871, -73.9755))
+    exact = timed_candidate(id="exact", **nearby)
+    ballparked = timed_candidate(id="ballparked", location_is_approximate=True, **nearby)
+
+    # Same spot, but the approximate one cannot claim the closeness it has not verified.
+    assert candidate_score(ballparked, base, fixture_weather()) < candidate_score(
+        exact, base, fixture_weather()
+    )
+
+
+def test_ballparked_location_is_not_punished_when_the_centroid_lands_far_away():
+    base = request()
+    far = dict(coordinates=Coordinates(40.8100, -73.9500))
+    exact = timed_candidate(id="exact", **far)
+    ballparked = timed_candidate(id="ballparked", location_is_approximate=True, **far)
+
+    assert candidate_score(ballparked, base, fixture_weather()) > candidate_score(
+        exact, base, fixture_weather()
+    )

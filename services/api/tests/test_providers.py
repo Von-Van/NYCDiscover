@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from app.cache import MemoryProviderCache
 from app.config import Settings
 from app.domain import Coordinates, ItineraryInput
-from app.providers import ProviderClient, ProviderHub
+from app.providers import EVENT_GEOCODE_BUDGET, ProviderClient, ProviderHub
 
 
 def test_memory_cache_returns_fresh_and_stale_values():
@@ -214,5 +214,219 @@ def test_event_calendar_contract_uses_documented_query_and_items_payload(monkeyp
         assert events[0].name == "Public Art Workshop"
         assert events[0].duration_minutes == 90
         assert events[0].coordinates == Coordinates(40.7145, -74.0060)
+
+    asyncio.run(scenario())
+
+
+def test_overpass_marks_branded_locations_as_chains(monkeypatch):
+    async def scenario():
+        hub = ProviderHub(Settings(fixture_mode=False), MemoryProviderCache())
+        elements = [
+            {
+                "type": "node",
+                "id": 1,
+                "lat": 40.787,
+                "lon": -73.975,
+                "tags": {"name": "Starbucks", "amenity": "cafe", "brand": "Starbucks"},
+            },
+            {
+                "type": "node",
+                "id": 2,
+                "lat": 40.788,
+                "lon": -73.976,
+                "tags": {
+                    "name": "Corner Coffee",
+                    "amenity": "cafe",
+                    "brand:wikidata": "Q37158",
+                },
+            },
+            {
+                "type": "node",
+                "id": 3,
+                "lat": 40.789,
+                "lon": -73.977,
+                "tags": {"name": "Hungarian Pastry Shop", "amenity": "cafe"},
+            },
+        ]
+
+        async def fetch_json(provider, url, **kwargs):
+            return {"elements": elements}, False
+
+        monkeypatch.setattr(hub.client, "fetch_json", fetch_json)
+        request = ItineraryInput(
+            location_label="Upper West Side",
+            coordinates=Coordinates(40.787, -73.9754),
+            start_at=datetime.now(ZoneInfo("America/New_York")),
+            available_minutes=240,
+            budget_min=0,
+            budget_max=40,
+            group_size=2,
+            transport_mode="walk",
+            radius_miles=2,
+            mood="social",
+        )
+
+        candidates, _ = await hub._overpass_candidates(request)
+
+        brands = {candidate.name: candidate.brand for candidate in candidates}
+        assert brands["Starbucks"] == "Starbucks"
+        assert brands["Corner Coffee"] == "Corner Coffee"
+        assert brands["Hungarian Pastry Shop"] is None
+
+    asyncio.run(scenario())
+
+
+def event_request(**overrides) -> ItineraryInput:
+    values = {
+        "location_label": "Midtown",
+        "coordinates": Coordinates(40.7549, -73.9840),
+        "start_at": datetime(2026, 8, 19, 18, 0, tzinfo=ZoneInfo("America/New_York")),
+        "available_minutes": 240,
+        "budget_min": 0,
+        "budget_max": 40,
+        "group_size": 2,
+        "transport_mode": "walk",
+        "radius_miles": 5,
+        "mood": "social",
+    }
+    values.update(overrides)
+    return ItineraryInput(**values)
+
+
+def event_hub(monkeypatch, items, geocoder=None):
+    """A hub whose event feed returns `items` and whose geocoder is a stub."""
+    hub = ProviderHub(
+        Settings(fixture_mode=False, nyc_event_calendar_key="test-key"), MemoryProviderCache()
+    )
+    attempted: list[str] = []
+
+    async def fetch_json(provider, url, **kwargs):
+        return {"items": items}, False
+
+    async def geocode(address):
+        attempted.append(address)
+        if geocoder is None:
+            return [], ()
+        return geocoder(address)
+
+    monkeypatch.setattr(hub.client, "fetch_json", fetch_json)
+    monkeypatch.setattr(hub, "geocode", geocode)
+    return hub, attempted
+
+
+def street_geocoder(address):
+    if any(character.isdigit() for character in address):
+        return [{"label": address, "latitude": 40.7500, "longitude": -73.9800}], ()
+    return [], ()
+
+
+START = "2026-08-19T19:00:00.000-04:00"
+
+
+def test_events_without_a_mappable_address_are_ballparked_not_dropped(monkeypatch):
+    async def scenario():
+        items = [
+            {"id": "a", "name": "Garden evening", "startDate": START,
+             "address": "Brooklyn Botanic Garden"},
+            {"id": "b", "name": "Story hour", "startDate": START,
+             "address": "Multiple locations across Queens"},
+            {"id": "c", "name": "Poetry night", "startDate": START, "venue": "Astoria Park Lawn"},
+        ]
+        hub, attempted = event_hub(monkeypatch, items, street_geocoder)
+
+        events, warnings = await hub._event_candidates(event_request())
+
+        assert [event.name for event in events] == [
+            "Garden evening",
+            "Story hour",
+            "Poetry night",
+        ]
+        assert all(event.location_is_approximate for event in events)
+        assert events[0].coordinates == Coordinates(40.6680, -73.9632)
+        assert events[1].coordinates == Coordinates(40.7282, -73.7949)
+        assert any("approximate neighborhood location" in warning for warning in warnings)
+        assert any("Location is approximate" in note for note in events[0].estimate_notes)
+        # A ballparked event is less trustworthy than one with a real address.
+        assert events[0].confidence < 0.72
+        # Vague text is not worth a slow geocode call.
+        assert "Multiple locations across Queens" not in attempted
+
+    asyncio.run(scenario())
+
+
+def test_exactly_located_events_are_not_marked_approximate(monkeypatch):
+    async def scenario():
+        items = [
+            {"id": "a", "name": "Rooftop concert", "startDate": START,
+             "latitude": 40.72, "longitude": -73.99},
+            {"id": "b", "name": "Workshop", "startDate": START,
+             "address": "5 Real Street, Manhattan"},
+        ]
+        hub, _ = event_hub(monkeypatch, items, street_geocoder)
+
+        events, warnings = await hub._event_candidates(event_request())
+
+        assert len(events) == 2
+        assert not any(event.location_is_approximate for event in events)
+        assert all(event.confidence == 0.72 for event in events)
+        assert warnings == ()
+
+    asyncio.run(scenario())
+
+
+def test_online_and_placeless_events_are_dropped_rather_than_ballparked(monkeypatch):
+    async def scenario():
+        items = [
+            {"id": "a", "name": "Webinar: budgeting", "startDate": START, "address": "Online only"},
+            {"id": "b", "name": "Virtual tour", "startDate": START, "address": "Zoom"},
+            {"id": "c", "name": "Mystery meetup", "startDate": START, "address": "TBD"},
+        ]
+        hub, attempted = event_hub(monkeypatch, items, street_geocoder)
+
+        events, warnings = await hub._event_candidates(event_request())
+
+        assert events == []
+        assert attempted == []
+        assert "Some NYC events could not be mapped and were omitted." in warnings
+
+    asyncio.run(scenario())
+
+
+def test_events_past_the_geocode_budget_fall_back_to_their_neighborhood(monkeypatch):
+    async def scenario():
+        items = [
+            {
+                "id": str(index),
+                "name": f"Event {index}",
+                "startDate": START,
+                "address": f"{index} Distinct Street, Harlem",
+            }
+            for index in range(1, EVENT_GEOCODE_BUDGET + 3)
+        ]
+        hub, attempted = event_hub(monkeypatch, items, street_geocoder)
+
+        events, _ = await hub._event_candidates(event_request())
+
+        assert len(attempted) == EVENT_GEOCODE_BUDGET
+        # Nothing is lost past the budget; the overflow is ballparked instead.
+        assert len(events) == len(items)
+        assert [event.location_is_approximate for event in events].count(True) == 2
+
+    asyncio.run(scenario())
+
+
+def test_events_sharing_an_address_reuse_one_geocode_lookup(monkeypatch):
+    async def scenario():
+        items = [
+            {"id": str(index), "name": f"Set {index}", "startDate": START,
+             "address": "11 Shared Avenue, Harlem"}
+            for index in range(4)
+        ]
+        hub, attempted = event_hub(monkeypatch, items, street_geocoder)
+
+        events, _ = await hub._event_candidates(event_request())
+
+        assert len(events) == 4
+        assert attempted == ["11 Shared Avenue, Harlem"]
 
     asyncio.run(scenario())

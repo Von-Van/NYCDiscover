@@ -95,6 +95,38 @@ class TimelineStepResponse(BaseModel):
     travel_before: TravelLegResponse
 
 
+class AdditionalOptionResponse(BaseModel):
+    id: str
+    replaces_candidate_id: str
+    step: TimelineStepResponse
+    total_minutes: int
+    total_cost_low: float
+    total_cost_high: float
+    confidence: float
+
+
+class CandidateResponse(BaseModel):
+    id: str
+    name: str
+    category: str
+    mood_tags: list[str]
+    coordinates: CoordinatesSchema
+    duration_minutes: int
+    cost_low: float
+    cost_high: float
+    indoor: bool | None
+    source_name: str
+    source_url: str | None
+    confidence: float
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    estimate_notes: list[str] = Field(default_factory=list)
+    popularity: float | None = None
+    opening_hours: str | None = None
+    brand: str | None = None
+    location_is_approximate: bool = False
+
+
 class ItineraryPlanResponse(BaseModel):
     id: str
     title: str
@@ -106,6 +138,7 @@ class ItineraryPlanResponse(BaseModel):
     total_cost_high: float
     steps: list[TimelineStepResponse]
     estimate_notes: list[str]
+    additional_options: list[AdditionalOptionResponse] = Field(default_factory=list)
 
 
 class WeatherResponse(BaseModel):
@@ -124,6 +157,16 @@ class GenerationResponse(BaseModel):
     generated_at: datetime
     data_mode: Literal["fixture", "live"]
     snapshot_token: str | None = None
+    candidate_context: list[CandidateResponse] | None = None
+    swap_token: str | None = None
+
+
+class ApplyOptionRequest(BaseModel):
+    brief: GenerateRequest
+    generation: GenerationResponse
+    swap_token: str = Field(min_length=20, max_length=200)
+    plan_id: str = Field(min_length=1, max_length=120)
+    option_id: str = Field(min_length=1, max_length=120)
 
 
 class SharedBrief(BaseModel):

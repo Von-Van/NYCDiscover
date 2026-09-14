@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .areas import find_area
 from .cache import ProviderCache
 from .config import Settings
 from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext
@@ -36,6 +37,11 @@ CATEGORY_DEFAULTS: dict[str, tuple[int, float, float, bool | None, tuple[str, ..
     "landmark": (45, 0, 10, None, ("cultural", "outdoors", "relaxing")),
     "event": (75, 0, 25, None, ("social", "cultural", "chaotic")),
 }
+
+# Nominatim allows roughly one lookup a second, so only a handful of distinct
+# addresses per request are worth the latency. Past the budget an event falls back
+# to its neighborhood centroid instead of being dropped.
+EVENT_GEOCODE_BUDGET = 6
 
 
 class ProviderClient:
@@ -293,6 +299,7 @@ class ProviderHub:
                     confidence=0.68 if tags.get("opening_hours") else 0.58,
                     estimate_notes=tuple(notes),
                     opening_hours=tags.get("opening_hours"),
+                    brand=_brand_from_tags(tags),
                 )
             )
         warnings: list[str] = []
@@ -321,7 +328,8 @@ class ProviderHub:
         )
         raw_events = _find_event_list(payload)
         events: list[Candidate] = []
-        geocode_attempts = 0
+        geocoded: dict[str, Coordinates | None] = {}
+        approximated_events = 0
         unmapped_events = 0
         for raw in raw_events:
             start_at = _parse_datetime(raw.get("startDate") or raw.get("start") or raw.get("startDateTime"))
@@ -330,26 +338,23 @@ class ProviderHub:
             if not name or not start_at or _event_is_canceled(raw):
                 continue
             coordinates = _event_coordinates(raw)
-            address = _event_address(raw)
-            if (
-                not coordinates
-                and address
-                and _event_address_is_specific(address)
-                and geocode_attempts < 6
-            ):
-                geocode_attempts += 1
-                try:
-                    matches, _ = await self.geocode(address)
-                except Exception:
-                    matches = []
-                if matches:
-                    coordinates = Coordinates(
-                        float(matches[0]["latitude"]),
-                        float(matches[0]["longitude"]),
-                    )
+            approximate_area: str | None = None
+            if not coordinates:
+                coordinates, approximate_area = await self._locate_event(raw, geocoded)
             if not coordinates:
                 unmapped_events += 1
                 continue
+            notes = [
+                "Price is estimated because the event source does not provide a normalized cost.",
+                "Verify event details before leaving.",
+            ]
+            if approximate_area:
+                approximated_events += 1
+                notes.insert(
+                    0,
+                    f"Location is approximate: placed in {approximate_area} because the listing "
+                    "has no mappable address. Check the listing before travelling.",
+                )
             duration = int((end_at - start_at).total_seconds() / 60) if end_at else 75
             events.append(
                 Candidate(
@@ -364,21 +369,59 @@ class ProviderHub:
                     indoor=None,
                     source_name="NYC Event Calendar",
                     source_url=raw.get("url") or raw.get("link") or raw.get("permalink"),
-                    confidence=0.72,
+                    confidence=0.5 if approximate_area else 0.72,
                     start_at=start_at,
                     end_at=end_at,
-                    estimate_notes=(
-                        "Price is estimated because the event source does not provide a normalized cost.",
-                        "Verify event details before leaving.",
-                    ),
+                    estimate_notes=tuple(notes),
+                    location_is_approximate=bool(approximate_area),
                 )
             )
         warnings: list[str] = []
         if stale:
             warnings.append("NYC events were served from stale cache.")
+        if approximated_events:
+            warnings.append(
+                "Some events are placed at an approximate neighborhood location because the "
+                "listing has no mappable address."
+            )
         if unmapped_events:
             warnings.append("Some NYC events could not be mapped and were omitted.")
         return events, tuple(warnings)
+
+    async def _locate_event(
+        self, raw: dict[str, Any], geocoded: dict[str, Coordinates | None]
+    ) -> tuple[Coordinates | None, str | None]:
+        """Locate an event without coordinates, ballparking it rather than losing it.
+
+        Returns the coordinates plus the name of the area they were ballparked from,
+        or None for that name when the location is exact.
+        """
+        address = _event_address(raw)
+        venue = _event_venue(raw)
+        if _event_is_virtual(address, venue, raw.get("name")):
+            return None, None
+        for query in (address, venue):
+            if not _is_geocodable(query):
+                continue
+            if query not in geocoded:
+                if len(geocoded) >= EVENT_GEOCODE_BUDGET:
+                    break
+                geocoded[query] = await self._geocode_one(query)
+            if geocoded[query]:
+                return geocoded[query], None
+        # Nothing precise: fall back to the neighborhood the listing names. The event
+        # name is the last resort, so "Concert in Prospect Park" still lands nearby.
+        area = find_area(address) or find_area(venue) or find_area(_event_text(raw.get("name")))
+        return (area.coordinates, area.name) if area else (None, None)
+
+    async def _geocode_one(self, query: str) -> Coordinates | None:
+        try:
+            matches, _ = await self.geocode(query)
+        except Exception:
+            return None
+        if not matches:
+            return None
+        return Coordinates(float(matches[0]["latitude"]), float(matches[0]["longitude"]))
 
 
 def _inside_nyc(lat: float, lon: float) -> bool:
@@ -398,6 +441,15 @@ def _category_from_tags(tags: dict[str, str]) -> str:
     if tags.get("shop") == "books":
         return "bookstore"
     return "landmark"
+
+
+def _brand_from_tags(tags: dict[str, str]) -> str | None:
+    """Preserve a provider brand label; ranking decides whether it is a major chain."""
+    brand = tags.get("brand")
+    if brand:
+        return brand
+    # A `brand:wikidata` id without a `brand` name still marks a branded branch.
+    return tags.get("name") if tags.get("brand:wikidata") else None
 
 
 def _find_event_list(payload: dict[str, Any] | list[Any]) -> list[dict[str, Any]]:
@@ -439,23 +491,65 @@ def _event_address(raw: dict[str, Any]) -> str | None:
     return None
 
 
-def _event_address_is_specific(address: str) -> bool:
-    normalized = " ".join(address.lower().split())
-    generic_phrases = (
-        "check website",
-        "locations across",
-        "multiple locations",
-        "online",
-        "various locations",
-        "virtual",
-        "zoom",
+def _event_venue(raw: dict[str, Any]) -> str | None:
+    for key in ("venue", "locationName", "place"):
+        value = _event_text(raw.get(key))
+        if value:
+            return value
+    location = raw.get("location")
+    if isinstance(location, str):
+        return _event_text(location)
+    if isinstance(location, dict):
+        for key in ("name", "venue", "label"):
+            value = _event_text(location.get(key))
+            if value:
+                return value
+    address = raw.get("address")
+    if isinstance(address, dict):
+        return _event_text(address.get("venue"))
+    return None
+
+
+def _event_text(value: Any) -> str | None:
+    return str(value).strip() or None if isinstance(value, str) else None
+
+
+VIRTUAL_LOCATION_PHRASES = (
+    "online",
+    "virtual",
+    "webinar",
+    "livestream",
+    "live stream",
+    "zoom",
+)
+
+VAGUE_LOCATION_PHRASES = (
+    "check website",
+    "citywide",
+    "locations across",
+    "multiple locations",
+    "to be announced",
+    "tbd",
+    "various locations",
+)
+
+
+def _event_is_virtual(*values: Any) -> bool:
+    """Online-only listings have nowhere to go, so they are dropped, not placed."""
+    return any(
+        phrase in " ".join(str(value).lower().split())
+        for value in values
+        if isinstance(value, str)
+        for phrase in VIRTUAL_LOCATION_PHRASES
     )
-    if any(phrase in normalized for phrase in generic_phrases):
+
+
+def _is_geocodable(text: str | None) -> bool:
+    """Spend a geocode call only on text that could name a single place."""
+    if not text:
         return False
-    return any(character.isdigit() for character in normalized) or any(
-        word in normalized
-        for word in ("avenue", "center", "museum", "park", "square", "street", "venue")
-    )
+    normalized = " ".join(text.lower().split())
+    return not any(phrase in normalized for phrase in VAGUE_LOCATION_PHRASES)
 
 
 def _event_is_canceled(raw: dict[str, Any]) -> bool:

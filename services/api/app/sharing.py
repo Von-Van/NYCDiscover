@@ -21,6 +21,13 @@ from .schemas import (
 def _canonical_snapshot(brief: GenerateRequest, generation: GenerationResponse) -> bytes:
     generation_data = generation.model_dump(mode="json")
     generation_data["snapshot_token"] = None
+    generation_data.pop("swap_token", None)
+    # Preserve signatures of generations issued before these additive fields existed.
+    if generation_data["candidate_context"] is None:
+        generation_data.pop("candidate_context")
+    for plan in generation_data["plans"]:
+        if not plan["additional_options"]:
+            plan.pop("additional_options")
     payload = {"brief": brief.model_dump(mode="json"), "generation": generation_data}
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
@@ -38,17 +45,29 @@ def sign_snapshot(
     return f"{timestamp}.{encoded}"
 
 
-def verify_snapshot(request: CreateShareRequest, secret: str, max_age_seconds: int = 3600) -> bool:
+def verify_generation(
+    brief: GenerateRequest,
+    generation: GenerationResponse,
+    token: str,
+    secret: str,
+    max_age_seconds: int = 3600,
+) -> bool:
     try:
-        timestamp_text, _ = request.snapshot_token.split(".", 1)
+        timestamp_text, _ = token.split(".", 1)
         timestamp = int(timestamp_text)
     except (ValueError, AttributeError):
         return False
     age = int(time.time()) - timestamp
     if age < -60 or age > max_age_seconds:
         return False
-    expected = sign_snapshot(request.brief, request.generation, secret, timestamp)
-    return hmac.compare_digest(expected, request.snapshot_token)
+    expected = sign_snapshot(brief, generation, secret, timestamp)
+    return hmac.compare_digest(expected, token)
+
+
+def verify_snapshot(request: CreateShareRequest, secret: str, max_age_seconds: int = 3600) -> bool:
+    return verify_generation(
+        request.brief, request.generation, request.snapshot_token, secret, max_age_seconds
+    )
 
 
 def redact_share(request: CreateShareRequest) -> tuple[SharedBrief, GenerationResponse]:
@@ -65,7 +84,10 @@ def redact_share(request: CreateShareRequest) -> tuple[SharedBrief, GenerationRe
     )
     generation = request.generation.model_copy(deep=True)
     generation.snapshot_token = None
+    generation.swap_token = None
+    generation.candidate_context = None
     for plan in generation.plans:
+        plan.additional_options = []
         if plan.steps:
             plan.steps[0].travel_before.from_label = "Starting point"
     return brief, generation

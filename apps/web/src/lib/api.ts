@@ -1,4 +1,5 @@
 import type {
+  ApplyOptionRequest,
   CreateShareRequest,
   CreateShareResponse,
   GenerateRequest,
@@ -54,6 +55,16 @@ export async function createShare(request: CreateShareRequest): Promise<CreateSh
     signal: AbortSignal.timeout(12_000),
   });
   return parseResponse<CreateShareResponse>(response);
+}
+
+export async function applyItineraryOption(request: ApplyOptionRequest): Promise<GenerationResponse> {
+  const response = await fetch(`${API_URL}/v1/itineraries/apply-option`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(20_000),
+  });
+  return parseResponse<GenerationResponse>(response);
 }
 
 export async function getSharedItinerary(id: string): Promise<SharedItineraryResponse> {

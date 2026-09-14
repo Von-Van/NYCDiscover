@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -9,12 +10,13 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from .cache import MemoryProviderCache, PostgresProviderCache
 from .config import settings
 from .database import Database
-from .domain import Coordinates, ItineraryInput
 from .engine import generate_itineraries
+from .options import apply_generation_option, itinerary_input
 from .limits import (
     MemoryProviderThrottle,
     MemoryRateLimiter,
@@ -27,6 +29,7 @@ from .observability import configure_sentry
 from .prefix import ServicePrefixMiddleware
 from .providers import ProviderHub
 from .schemas import (
+    ApplyOptionRequest,
     CreateShareRequest,
     CreateShareResponse,
     GenerateRequest,
@@ -35,7 +38,7 @@ from .schemas import (
     HealthResponse,
     SharedItineraryResponse,
 )
-from .sharing import PostgresShareStore, sign_snapshot, verify_snapshot
+from .sharing import PostgresShareStore, sign_snapshot, verify_generation, verify_snapshot
 
 
 configure_sentry(settings)
@@ -79,6 +82,8 @@ async def lifespan(app: FastAPI):
         else MemoryRateLimiter()
     )
     app.state.share_store = PostgresShareStore(database.pool) if database else None
+    # Live instances share a stable key; local fixtures can edit without a database.
+    app.state.swap_signing_secret = (settings.share_signing_secret or secrets.token_urlsafe(32)) + ":options"
     yield
     await cache.close()
     if database:
@@ -194,27 +199,14 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
     if start_at < now - timedelta(minutes=5):
         raise HTTPException(status_code=422, detail="The start time must be now or later today.")
 
-    itinerary_input = ItineraryInput(
-        location_label=payload.location_label,
-        coordinates=Coordinates(**payload.coordinates.model_dump()),
-        start_at=start_at,
-        available_minutes=payload.available_minutes,
-        budget_min=payload.budget_min,
-        budget_max=payload.budget_max,
-        group_size=payload.group_size,
-        transport_mode=payload.transport_mode,
-        radius_miles=payload.radius_miles,
-        mood=payload.mood,
-        moods=tuple(payload.moods),
-        regeneration_seed=payload.regeneration_seed,
-    )
+    planner_input = itinerary_input(payload)
     try:
-        weather, weather_warnings = await request.app.state.providers.weather(itinerary_input)
-        candidates, candidate_warnings = await request.app.state.providers.candidates(itinerary_input)
+        weather, weather_warnings = await request.app.state.providers.weather(planner_input)
+        candidates, candidate_warnings = await request.app.state.providers.candidates(planner_input)
     except ProviderBusyError as exc:
         raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
     result = generate_itineraries(
-        itinerary_input,
+        planner_input,
         candidates,
         weather,
         tuple((*weather_warnings, *candidate_warnings)),
@@ -226,9 +218,34 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
         "generated_at": result.generated_at,
         "data_mode": "fixture" if settings.fixture_mode else "live",
         "snapshot_token": None,
+        "candidate_context": [asdict(candidate) for candidate in result.candidate_context],
     })
+    response.swap_token = sign_snapshot(payload, response, request.app.state.swap_signing_secret)
     if request.app.state.share_store and settings.share_signing_secret:
         response.snapshot_token = sign_snapshot(payload, response, settings.share_signing_secret)
+    return response
+
+
+@app.post("/v1/itineraries/apply-option", response_model=GenerationResponse)
+async def swap_option(payload: ApplyOptionRequest, request: Request) -> GenerationResponse:
+    await enforce_limit(request, "apply-option", 60, 600)
+    if not verify_generation(
+        payload.brief, payload.generation, payload.swap_token, request.app.state.swap_signing_secret
+    ):
+        raise HTTPException(status_code=400, detail="These options have expired or changed. Regenerate to continue editing.")
+    if itinerary_input(payload.brief).start_at.date() != datetime.now(ZoneInfo("America/New_York")).date():
+        raise HTTPException(status_code=409, detail="These plans were for another day. Regenerate for today.")
+    try:
+        response = await run_in_threadpool(apply_generation_option, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Changes issue a new signature without extending the original one-hour editing window.
+    issued_at = int(payload.swap_token.split(".", 1)[0])
+    response.swap_token = sign_snapshot(
+        payload.brief, response, request.app.state.swap_signing_secret, issued_at
+    )
+    if request.app.state.share_store and settings.share_signing_secret:
+        response.snapshot_token = sign_snapshot(payload.brief, response, settings.share_signing_secret, issued_at)
     return response
 
 

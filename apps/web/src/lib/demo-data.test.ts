@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDemoResponse } from "./demo-data";
+import { applyDemoOption, buildDemoResponse } from "./demo-data";
 import type { GenerateRequest } from "./api-types";
 
 const request: GenerateRequest = {
@@ -24,6 +24,18 @@ describe("demo response", () => {
     for (const plan of response.plans) {
       expect(plan.total_minutes).toBeLessThanOrEqual(request.available_minutes);
       expect(plan.total_cost_high).toBeLessThanOrEqual(request.budget_max);
+    }
+  });
+
+  it.each([false, true])("applies the food-only exception to offline options: %s", (foodOnly) => {
+    const brief = { ...request, mood: "food-focused" as const, moods: foodOnly ? ["food-focused" as const] : ["food-focused" as const, "social" as const] };
+    const response = buildDemoResponse(brief);
+    const plan = response.plans[0];
+    const secondFood = plan.additional_options?.find((option) => option.replaces_candidate_id === "demo-trivia" && option.step.category === "cafe");
+    expect(Boolean(secondFood)).toBe(foodOnly);
+    if (secondFood) {
+      const updated = applyDemoOption(brief, response, plan.id, secondFood.id);
+      expect(updated.plans[0].steps.map((step) => step.category)).toEqual(["cafe", "dessert"]);
     }
   });
 });

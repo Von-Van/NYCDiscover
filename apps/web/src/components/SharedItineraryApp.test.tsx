@@ -65,6 +65,7 @@ describe("SharedItineraryApp", () => {
     expect(screen.getByRole("button", { name: /Plan B/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Private origin")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Regenerate|Change the brief/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Additional Options|Swap in/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Plan C/ }));
     expect(screen.getByRole("button", { name: /Plan C/ })).toHaveAttribute("aria-pressed", "true");
