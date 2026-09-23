@@ -78,7 +78,7 @@ def test_missing_event_key_returns_warning_in_live_mode(monkeypatch):
             mood="social",
         )
         candidates, warnings = await hub.candidates(request)
-        assert candidates == []
+        assert candidates and all(c.id.startswith("curated-") for c in candidates)
         assert any("NYC_EVENT_CALENDAR_KEY" in warning for warning in warnings)
 
     asyncio.run(scenario())
@@ -203,7 +203,7 @@ def test_event_calendar_contract_uses_documented_query_and_items_payload(monkeyp
         events, warnings = await hub._event_candidates(request)
 
         assert captured["params"] == {
-            "startDate": "08/19/2026 06:00 PM",
+            "startDate": "08/19/2026 12:00 AM",
             "endDate": "08/19/2026 10:00 PM",
             "sort": "DATE",
         }

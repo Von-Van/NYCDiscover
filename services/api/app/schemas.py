@@ -18,6 +18,33 @@ Mood = Literal[
     "food-focused",
 ]
 TransportMode = Literal["walk", "bike", "transit"]
+DiscoveryMode = Literal["easy", "new", "surprise"]
+
+
+class PlaceDetailsSchema(BaseModel):
+    description: str = ""
+    activity: str = ""
+    neighborhood: str = ""
+    borough: str = ""
+    price_status: Literal["free", "verified", "estimated", "unknown"] = "estimated"
+    registration: str | None = None
+    source_urls: list[str] = Field(default_factory=list)
+    reviewed_at: str | None = None
+    signature: bool = False
+    prompt: str | None = None
+
+
+class TodayReasonSchema(BaseModel):
+    kind: str
+    text: str
+    source_url: str | None = None
+
+
+class WeatherPeriodSchema(BaseModel):
+    start_at: datetime
+    end_at: datetime
+    precipitation_probability: int
+    is_severe: bool = False
 
 
 class CoordinatesSchema(BaseModel):
@@ -38,6 +65,12 @@ class GenerateRequest(BaseModel):
     mood: Mood
     moods: list[Mood] = Field(default_factory=list, max_length=3)
     regeneration_seed: int = Field(default=0, ge=0, le=1_000_000)
+    centerpiece_id: str | None = Field(default=None, max_length=200)
+    discovery_mode: DiscoveryMode = "new"
+    seen_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    visited_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    excluded_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    locked_candidate_ids: list[str] = Field(default_factory=list, max_length=3)
 
     @model_validator(mode="after")
     def validate_budget(self) -> GenerateRequest:
@@ -93,6 +126,11 @@ class TimelineStepResponse(BaseModel):
     source_url: str | None
     estimate_notes: list[str]
     travel_before: TravelLegResponse
+    details: PlaceDetailsSchema | None = None
+    why_today: TodayReasonSchema | None = None
+    schedule_kind: Literal["fixed_start", "drop_in", "opening_hours"] | None = None
+    window_start_at: datetime | None = None
+    window_end_at: datetime | None = None
 
 
 class AdditionalOptionResponse(BaseModel):
@@ -125,6 +163,10 @@ class CandidateResponse(BaseModel):
     opening_hours: str | None = None
     brand: str | None = None
     location_is_approximate: bool = False
+    details: PlaceDetailsSchema | None = None
+    schedule_kind: Literal["fixed_start", "drop_in", "opening_hours"] = "fixed_start"
+    recurrence: Literal["unknown", "one_off", "recurring"] = "unknown"
+    final_day: str | None = None
 
 
 class ItineraryPlanResponse(BaseModel):
@@ -139,6 +181,10 @@ class ItineraryPlanResponse(BaseModel):
     steps: list[TimelineStepResponse]
     estimate_notes: list[str]
     additional_options: list[AdditionalOptionResponse] = Field(default_factory=list)
+    introduction: str = ""
+    why_today: TodayReasonSchema | None = None
+    prompt: str | None = None
+    character: str | None = None
 
 
 class WeatherResponse(BaseModel):
@@ -148,6 +194,8 @@ class WeatherResponse(BaseModel):
     is_wet: bool
     is_severe: bool
     source_name: str
+    periods: list[WeatherPeriodSchema] = Field(default_factory=list)
+    assumed: bool = False
 
 
 class GenerationResponse(BaseModel):
@@ -159,6 +207,40 @@ class GenerationResponse(BaseModel):
     snapshot_token: str | None = None
     candidate_context: list[CandidateResponse] | None = None
     swap_token: str | None = None
+
+
+class DiscoveryCard(BaseModel):
+    label: str
+    step: TimelineStepResponse
+
+
+class DiscoveryResponse(BaseModel):
+    cards: list[DiscoveryCard]
+    weather: WeatherResponse
+    warnings: list[str]
+    generated_at: datetime
+    data_mode: Literal["fixture", "live"]
+
+
+class RemixRequest(BaseModel):
+    brief: GenerateRequest
+    generation: GenerationResponse
+    swap_token: str = Field(min_length=20, max_length=200)
+    plan_id: str
+    locked_candidate_ids: list[str] = Field(default_factory=list, max_length=3)
+    excluded_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    seen_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    visited_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    discovery_mode: DiscoveryMode = "new"
+    completed_candidate_ids: list[str] = Field(default_factory=list, max_length=3)
+    continue_outing: bool = False
+    current_coordinates: CoordinatesSchema | None = None
+    current_location_label: str | None = Field(default=None, max_length=160)
+
+
+class RemixResponse(BaseModel):
+    brief: GenerateRequest
+    generation: GenerationResponse
 
 
 class ApplyOptionRequest(BaseModel):

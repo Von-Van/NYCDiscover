@@ -1,4 +1,5 @@
 "use client";
+import { useNYCDate } from "@/lib/use-nyc-date";
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,11 +7,11 @@ import { ApiError, getSharedItinerary } from "@/lib/api";
 import type { SharedItineraryResponse } from "@/lib/api-types";
 import { getPlanComparisonLabels } from "@/lib/plan-comparison";
 import { ItineraryMap } from "./ItineraryMap";
+import { nycTime, nycLongDate, nycDate } from "@/lib/nyc-time";
+import { priceLabel } from "@/lib/fieldguide";
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(
-    new Date(value),
-  );
+  return nycTime(value);
 }
 
 function durationLabel(minutes: number) {
@@ -30,6 +31,7 @@ interface SharedItineraryAppProps {
 }
 
 export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
+  const today = useNYCDate();
   const [shared, setShared] = useState<SharedItineraryResponse | null>(null);
   const [activePlanId, setActivePlanId] = useState("");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -162,6 +164,14 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
             </div>
           </div>
 
+          <article className="shared-edition-card" aria-label="Shared daily edition">
+            <p className="eyebrow">{nycLongDate(shared.brief.start_at)} · New York edition</p>
+            <h2>{activePlan.title}</h2><p>{activePlan.introduction || activePlan.subtitle}</p>
+            {activePlan.why_today && <p className="today-reason">Why that day · {activePlan.why_today.text}</p>}
+            <p>{activePlan.steps.map((s) => s.name).join(" → ")}</p>
+            {today && nycDate(shared.brief.start_at) !== today && <p role="status">This is a snapshot of a past outing. Times and availability have not been refreshed.</p>}
+            <Link className="text-button" href="/">Make a plan for today →</Link>
+          </article>
           <nav className="plan-tabs" aria-label="Choose an itinerary">
             {shared.generation.plans.map((plan, index) => (
               <button
@@ -175,7 +185,7 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
                   {planLabels.get(plan.id) && <mark>{planLabels.get(plan.id)}</mark>}
                 </span>
                 <strong>{plan.title}</strong>
-                <small>{durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high} · {Math.round(plan.confidence * 100)}% confidence</small>
+                <small>{durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high}</small>
               </button>
             ))}
           </nav>
@@ -184,7 +194,7 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
             <article className="timeline-card">
               <div className="plan-summary">
                 <div><p className="eyebrow">{activePlan.subtitle}</p><h2>{activePlan.title}</h2></div>
-                <div className="confidence-seal"><strong>{Math.round(activePlan.confidence * 100)}</strong><span>{confidenceLabel(activePlan.confidence)}</span></div>
+                <span className="edition-stamp">{activePlan.character || "Shared edition"}</span>
               </div>
               <dl className="plan-facts">
                 <div><dt>Total time</dt><dd>{durationLabel(activePlan.total_minutes)}</dd></div>
@@ -218,8 +228,11 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
                       <div className="stop-copy">
                         <span className="category-tag">{step.category}</span>
                         <h3><button type="button" onClick={() => selectTimelineStep(step.candidate_id)}>{step.name}</button></h3>
-                        <p>${step.cost_low}–${step.cost_high} · {confidenceLabel(step.confidence)}</p>
-                        <details><summary>What to verify</summary>{step.estimate_notes.map((note) => <p key={note}>{note}</p>)}{step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}</details>
+                        {step.details?.activity && <p>{step.details.activity}</p>}
+                        <p>{priceLabel(step)}</p>
+                        {step.details?.registration && <p>{step.details.registration}</p>}
+                        {step.why_today && <p className="today-reason">{step.why_today.text}</p>}
+                        <details><summary>What to verify</summary><p>{confidenceLabel(step.confidence)}</p>{step.estimate_notes.map((note) => <p key={note}>{note}</p>)}{step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}</details>
                       </div>
                     </div>
                   </li>

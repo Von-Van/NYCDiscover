@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { applyItineraryOption, createShare, generateItineraries, geocodeLocation } from "@/lib/api";
+import { ApiError, applyItineraryOption, createShare, generateItineraries, geocodeLocation, remixItinerary } from "@/lib/api";
 import type { AdditionalOption, GenerateRequest, GenerationResponse } from "@/lib/api-types";
 import { applyDemoOption, buildDemoResponse } from "@/lib/demo-data";
 import { toGenerateRequest, validateForm, type DiscoveryForm } from "@/lib/form";
@@ -9,6 +9,12 @@ import { getPlanComparisonLabels } from "@/lib/plan-comparison";
 import { BriefFields, initialDiscoveryForm } from "./BriefFields";
 import { ItineraryMap } from "./ItineraryMap";
 import { AdditionalOptions } from "./AdditionalOptions";
+import { useNYCDate } from "@/lib/use-nyc-date";
+import { TodayEdition } from "./TodayEdition";
+import { OutingView } from "./OutingView";
+import { getDiscoverySession, useDiscoverySession, saveDiscoverySession, resetDiscoverySession } from "@/lib/discovery-session";
+import { fieldguideEvent, priceLabel } from "@/lib/fieldguide";
+import { nycTime, nycLongDate, nycDate } from "@/lib/nyc-time";
 
 const fallbackCoordinates = { latitude: 40.787, longitude: -73.9754 };
 
@@ -21,9 +27,7 @@ function copyForm(form: DiscoveryForm): DiscoveryForm {
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(
-    new Date(value),
-  );
+  return nycTime(value);
 }
 
 function durationLabel(minutes: number) {
@@ -41,6 +45,10 @@ function confidenceLabel(confidence: number) {
 type GenerationMode = "initial" | "update" | "regenerate";
 
 export function DiscoveryApp() {
+  const session = useDiscoverySession();
+  const editionDate = useNYCDate();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [editionVersion, setEditionVersion] = useState(0);
   const [draftForm, setDraftForm] = useState<DiscoveryForm>(() => copyForm(initialDiscoveryForm));
   const [committedForm, setCommittedForm] = useState<DiscoveryForm | null>(null);
   const [phase, setPhase] = useState<"form" | "loading" | "results">("form");
@@ -165,20 +173,30 @@ export function DiscoveryApp() {
         coordinates: { latitude: first.latitude, longitude: first.longitude },
       }));
       setMessage("Starting point set.");
-    } catch {
-      setDraftForm((current) => ({ ...current, coordinates: fallbackCoordinates }));
-      setMessage("Using the Upper West Side demo starting point while the API is offline.");
+    } catch (error) {
+      if (process.env.NEXT_PUBLIC_DEMO_FALLBACK === "false" || error instanceof ApiError) {
+        setMessage(error instanceof Error ? error.message : "Could not find that starting point.");
+      } else {
+        setDraftForm((current) => ({ ...current, coordinates: fallbackCoordinates }));
+        setMessage("Using the Upper West Side demo starting point while the API is offline.");
+      }
     }
   }
 
-  async function runGeneration(form: DiscoveryForm, nextSeed: number, mode: GenerationMode) {
+  async function runGeneration(form: DiscoveryForm, nextSeed: number, mode: GenerationMode, centerpieceId: string | null = null) {
     if (mutationPending.current) return false;
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (formErrors.length > 0) return false;
 
+    let request: GenerateRequest;
+    try {
+      const memory = getDiscoverySession();
+      request = { ...toGenerateRequest(form, nextSeed), centerpiece_id: centerpieceId, discovery_mode: memory.mode,
+        seen_candidate_ids: memory.seen, visited_candidate_ids: memory.visited, excluded_candidate_ids: memory.excluded,
+        locked_candidate_ids: centerpieceId ? [centerpieceId] : mode === "initial" ? [] : memory.locked };
+    } catch (error) { setErrors([error instanceof Error ? error.message : "Choose a valid time."]); return false; }
     mutationPending.current = true;
-    const request = toGenerateRequest(form, nextSeed);
     if (mode === "initial") setPhase("loading");
     else setIsUpdating(true);
     setMessage("");
@@ -189,7 +207,7 @@ export function DiscoveryApp() {
       try {
         result = await generateItineraries(request);
       } catch (error) {
-        if (process.env.NEXT_PUBLIC_DEMO_FALLBACK === "false") throw error;
+        if (process.env.NEXT_PUBLIC_DEMO_FALLBACK === "false" || error instanceof ApiError || centerpieceId || request.locked_candidate_ids?.length) throw error;
         result = buildDemoResponse(request);
         usingLocalDemo = true;
       }
@@ -211,6 +229,10 @@ export function DiscoveryApp() {
       setInspectorOpen(false);
       setErrors([]);
       setPhase("results");
+      saveDiscoverySession({ saved: { brief: request, generation: result, form: committed, planId: result.plans[0]?.id ?? "" },
+        seen: [...getDiscoverySession().seen, ...result.plans.flatMap((p) => p.steps.map((s) => s.candidate_id))],
+        locked: request.locked_candidate_ids ?? [], completed: [], outing: false, promptDismissed: false, feedback: false });
+      fieldguideEvent("generation_succeeded");
       return true;
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "Itinerary generation failed."]);
@@ -234,10 +256,56 @@ export function DiscoveryApp() {
   }
 
   async function regenerate() {
+    if (response?.swap_token) { await remixPlan(); return; }
     if (!committedForm) return;
+    if (session.locked.length) { setErrors(["Connect to the planner to keep stops while remixing."]); return; }
     const nextSeed = seed + 1;
     setSeed(nextSeed);
     await runGeneration(committedForm, nextSeed, "regenerate");
+  }
+
+  function resumeSaved() {
+    const saved = session.saved;
+    if (!saved || nycDate(saved.brief.start_at) !== nycDate()) return;
+    setResponse(saved.generation); setCommittedRequest(saved.brief); setCommittedForm(saved.form);
+    setDraftForm(copyForm(saved.form)); setActivePlanId(saved.planId); setLocalDemo(!saved.generation.swap_token);
+    setPhase("results");
+  }
+
+  async function remixPlan(excludeId?: string, continueOuting = false, location?: string) {
+    if (mutationPending.current || !response?.swap_token || !committedRequest || !activePlan || !committedForm) return;
+    const memory = getDiscoverySession();
+    continueOuting = continueOuting || memory.completed.length > 0;
+    const excluded = [...new Set([...memory.excluded, ...(excludeId ? [excludeId] : [])])];
+    if (excluded.length > 200) { setErrors(["This session has 200 dismissed places. Reset this session to explore again."]); return; }
+    saveDiscoverySession({ excluded });
+    mutationPending.current = true; setIsUpdating(true); setErrors([]);
+    try {
+      let currentCoordinates;
+      if (location) {
+        const found = await geocodeLocation(location);
+        if (!found.results[0]) throw new Error("No NYC starting point matched. Try a more specific address.");
+        currentCoordinates = { latitude: found.results[0].latitude, longitude: found.results[0].longitude };
+      }
+      const updated = await remixItinerary({ brief: committedRequest, generation: response, swap_token: response.swap_token,
+        plan_id: activePlan.id, locked_candidate_ids: memory.locked, excluded_candidate_ids: excluded,
+        seen_candidate_ids: memory.seen, visited_candidate_ids: memory.visited, discovery_mode: memory.mode,
+        completed_candidate_ids: continueOuting ? memory.completed : [], continue_outing: continueOuting,
+        current_coordinates: currentCoordinates, current_location_label: location });
+      setResponse(updated.generation); setCommittedRequest(updated.brief); setActivePlanId(updated.generation.plans[0]?.id ?? "");
+      setSelectedStepId(null); setPreviewStepId(null); setShareUrl(""); setShareStatus("idle"); setShareMessage("");
+      const form = { ...committedForm, coordinates: updated.brief.coordinates, locationLabel: updated.brief.location_label,
+        availableMinutes: updated.brief.available_minutes, budgetMax: updated.brief.budget_max };
+      setCommittedForm(form); setDraftForm(copyForm(form));
+      saveDiscoverySession({ saved: { brief: updated.brief, generation: updated.generation, form, planId: updated.generation.plans[0]?.id ?? "" },
+        excluded, seen: [...memory.seen, ...updated.generation.plans.flatMap((p) => p.steps.map((s) => s.candidate_id))] });
+      setSwapStatus("Your plan is refreshed. Kept stops stay in place.");
+    } catch (error) { setErrors([error instanceof Error ? error.message : "Could not remix this outing."]); }
+    finally { mutationPending.current = false; setIsUpdating(false); }
+  }
+
+  function resetSession() {
+    resetDiscoverySession(); setEditionVersion((n) => n + 1); setSwapStatus("Session reset. Your visible plan is still available.");
   }
 
   function selectTimelineStep(stepId: string) {
@@ -247,7 +315,11 @@ export function DiscoveryApp() {
 
   function activatePlan(planId: string) {
     if (mutationPending.current) return;
+    const nextPlan = response?.plans.find((plan) => plan.id === planId);
+    if (!nextPlan || session.locked.some((id) => !nextPlan.steps.some((step) => step.candidate_id === id))) return;
     setActivePlanId(planId);
+    saveDiscoverySession({ locked: session.locked, completed: [], outing: false, promptDismissed: false, feedback: false,
+      saved: session.saved ? { ...session.saved, planId } : null });
     setSelectedStepId(null);
     setPreviewStepId(null);
     setShareUrl("");
@@ -260,6 +332,7 @@ export function DiscoveryApp() {
   async function swapOption(option: AdditionalOption) {
     if (mutationPending.current || inspectorOpen || !response || !committedRequest || !activePlan) return false;
     if (!localDemo && !response.swap_token) return false;
+    if (session.locked.includes(option.replaces_candidate_id)) { setSwapError("Unlock this stop before replacing it."); return false; }
     mutationPending.current = true;
     setPendingOptionId(option.id);
     setSwapError("");
@@ -276,6 +349,7 @@ export function DiscoveryApp() {
           option_id: option.id,
         });
       setResponse(updated);
+      saveDiscoverySession({ saved: { brief: committedRequest, generation: updated, form: committedForm!, planId: activePlan.id } });
       setSelectedStepId(null);
       setPreviewStepId(null);
       setShareUrl("");
@@ -355,23 +429,23 @@ export function DiscoveryApp() {
         </button>
         <div className="masthead-rule">
           <span>VOL. 01</span>
-          <span>{new Intl.DateTimeFormat("en-US", { dateStyle: "full" }).format(new Date())}</span>
+          <span suppressHydrationWarning>{editionDate ? nycLongDate(`${editionDate}T12:00:00-04:00`) : "Today in New York"}</span>
           <span>PLANS, NOT LISTS</span>
         </div>
       </header>
 
       {phase === "form" && (
-        <section className="planner-layout">
+        <section className="daily-front-page">{session.saved && nycDate(session.saved.brief.start_at) === nycDate() && <div className="resume-strip"><span>You have a plan from this session.</span><button className="text-button" onClick={resumeSaved}>Resume your outing →</button></div>}<div className="planner-layout edition-planner">
           <div className="hero-copy">
             <p className="eyebrow">A field guide for right now</p>
             <h1>
-              New York,
+              Your day,
               <br />
-              <em>decided.</em>
+              <em>around here.</em>
             </h1>
             <p className="dek">
-              Give us a few practical constraints. Get back a small plan that fits the hours you
-              actually have.
+              A market morning. A small museum. A turn you haven’t taken.
+              Find your own little piece of New York today.
             </p>
             <div className="hero-note">
               <span className="note-number">01</span>
@@ -384,10 +458,18 @@ export function DiscoveryApp() {
 
           <form className="planner-card" onSubmit={submit} noValidate>
             <div className="card-heading">
-              <span>THE BRIEF</span>
-              <strong>Tell us what kind of day this is.</strong>
+              <span>START SOMEWHERE</span>
+              <strong>The city is closer than you think.</strong>
+            </div>
+            <div className="borough-starts" aria-label="Starting points in all five boroughs">
+              {([
+                ["Manhattan", "Upper West Side", 40.787, -73.9754], ["Brooklyn", "Park Slope", 40.671, -73.9814],
+                ["Queens", "Astoria", 40.7644, -73.9235], ["The Bronx", "Fordham", 40.861, -73.89],
+                ["Staten Island", "St. George", 40.6437, -74.0765],
+              ] as const).map(([borough, name, latitude, longitude]) => <button key={borough} type="button" title={`Start in ${name}`} onClick={() => { setDraftForm((f) => ({ ...f, locationLabel: name, coordinates: { latitude, longitude } })); setMessage(`Starting in ${name}.`); }}>{borough}</button>)}
             </div>
             <BriefFields
+              progressive={!advancedOpen}
               form={draftForm}
               message={message}
               errors={errors}
@@ -395,6 +477,7 @@ export function DiscoveryApp() {
               onResolveLocation={resolveLocation}
               onUpdate={update}
             />
+            <div className="brief-summary"><span>{draftForm.groupSize} people · {draftForm.transportMode} · {draftForm.radiusMiles} mi · {draftForm.moods.join(" + ")}</span><button type="button" className="text-button" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(!advancedOpen)}>{advancedOpen ? "Fewer details −" : "More details +"}</button></div>
             <div className="planner-submit-bar">
               <button className="generate-button" type="submit">
                 Make my plan <span aria-hidden="true">→</span>
@@ -404,6 +487,9 @@ export function DiscoveryApp() {
               </p>
             </div>
           </form>
+          </div>
+          <div className="discovery-controls"><div className="discovery-modes" aria-label="Discovery style">{([["easy", "Easy favorites"], ["new", "Something new"], ["surprise", "Surprise me"]] as const).map(([mode, label]) => <button type="button" key={mode} aria-pressed={session.mode === mode} onClick={() => { saveDiscoverySession({ mode }); setEditionVersion((n) => n + 1); }}>{label}</button>)}</div><button className="text-button" onClick={resetSession}>Reset this session</button></div>
+          <TodayEdition key={editionVersion} form={draftForm} disabled={busy} onChoose={(id) => void runGeneration(draftForm, seed, "initial", id)} />
         </section>
       )}
 
@@ -417,27 +503,28 @@ export function DiscoveryApp() {
       )}
 
       {phase === "results" && response && (
-        <section className={inspectorOpen ? "results-section inspector-is-open" : "results-section"}>
+        <section className={`results-section${inspectorOpen ? " inspector-is-open" : ""}${session.outing ? " outing-is-active" : ""}`}>
           <div className="results-workspace">
             <div className="results-main">
               <div className="results-heading">
                 <div>
                   <p className="eyebrow">Plans for {displayForm.locationLabel}</p>
-                  <h1>Here’s your way out the door.</h1>
+                  <h1>{session.outing ? "Out in New York." : "Here’s your way out the door."}</h1>
                 </div>
                 <div className="results-actions">
                   <button
                     className="text-button"
                     onClick={openInspector}
-                    disabled={busy}
+                    disabled={busy || session.completed.length > 0}
                     aria-expanded={inspectorOpen}
                     aria-controls="brief-inspector"
                   >
                     Change the brief
                   </button>
-                  <button className="outline-button" onClick={regenerate} disabled={busy}>
+                  <button className="outline-button" onClick={regenerate} disabled={busy || session.outing}>
                     {isUpdating ? "Working…" : "Regenerate"}
                   </button>
+                  {shareUrl && typeof navigator !== "undefined" && !!navigator.share && <button className="text-button" onClick={() => void navigator.share({ title: activePlan?.title ?? "NYC Discover", url: shareUrl }).catch(() => setShareMessage("Your link is ready to copy below."))}>Share to…</button>}
                   {response.snapshot_token && (
                     <button
                       className="share-button"
@@ -482,7 +569,15 @@ export function DiscoveryApp() {
                 </div>
               )}
 
-              <div className="conditions-rail">
+              <div className="plan-steering" hidden={session.outing}>
+              <div className="discovery-controls"><div className="discovery-modes" aria-label="Discovery style">{([["easy", "Easy favorites"], ["new", "Something new"], ["surprise", "Surprise me"]] as const).map(([mode, label]) => <button type="button" key={mode} disabled={busy} aria-pressed={session.mode === mode} onClick={() => saveDiscoverySession({ mode })}>{label}</button>)}</div><button className="text-button" disabled={busy} onClick={resetSession}>Reset this session</button></div>
+              {activePlan && <div className="outing-entry"><button className="generate-button" disabled={busy} onClick={() => { saveDiscoverySession({ outing: !session.outing }); if (!session.outing) fieldguideEvent("outing_started"); }}>{session.outing ? "Back to the full plan" : "Start this outing →"}</button><span>Keep the next good stop close at hand.</span></div>}
+              </div>
+              {session.outing && activePlan && <OutingView plan={activePlan} completed={session.completed} transport={displayForm.transportMode} busy={busy}
+                onComplete={(id) => saveDiscoverySession({ completed: [...session.completed, id], visited: [...session.visited, id] })}
+                onAlternative={(location) => void remixPlan(activePlan.steps.find((s) => !session.completed.includes(s.candidate_id))?.candidate_id, true, location)}
+                onBack={() => saveDiscoverySession({ outing: false })} feedback={session.feedback} onFeedback={() => saveDiscoverySession({ feedback: true })} />}
+              <div className="conditions-rail" hidden={session.outing}>
                 <div className="weather-strip">
                   <span className="weather-mark" aria-hidden="true">{response.weather.is_wet ? "☂" : "☼"}</span>
                   <div>
@@ -509,14 +604,15 @@ export function DiscoveryApp() {
                 </div>
               ) : activePlan ? (
                 <>
-                  <nav className="plan-tabs" aria-label="Choose an itinerary">
+                  <nav className="plan-tabs" aria-label="Choose an itinerary" hidden={session.outing}>
                     {response.plans.map((plan, index) => (
                       <button
                         key={plan.id}
                         className={activePlan.id === plan.id ? "active" : ""}
                         aria-pressed={activePlan.id === plan.id}
                         onClick={() => activatePlan(plan.id)}
-                        disabled={busy}
+                        disabled={busy || session.completed.length > 0 || session.locked.some((id) => !plan.steps.some((step) => step.candidate_id === id))}
+                        title={session.locked.some((id) => !plan.steps.some((step) => step.candidate_id === id)) ? "Unlock kept stops to choose this alternative" : undefined}
                       >
                         <span className="plan-tab-topline">
                           <span>Plan {String.fromCharCode(65 + index)}</span>
@@ -524,24 +620,24 @@ export function DiscoveryApp() {
                         </span>
                         <strong>{plan.title}</strong>
                         <small>
-                          {durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high} · {Math.round(plan.confidence * 100)}% confidence
+                          {durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high}
                         </small>
                       </button>
                     ))}
                   </nav>
 
-                  <div className="result-grid">
+                  <div className="result-grid" hidden={session.outing}>
                     <article className="timeline-card">
                       <div className="plan-summary">
                         <div>
                           <p className="eyebrow">{activePlan.subtitle}</p>
                           <h2>{activePlan.title}</h2>
                         </div>
-                        <div className="confidence-seal">
-                          <strong>{Math.round(activePlan.confidence * 100)}</strong>
-                          <span>{confidenceLabel(activePlan.confidence)}</span>
-                        </div>
+                        <span className="edition-stamp">{activePlan.character || "Your daily edition"}</span>
                       </div>
+                      {activePlan.introduction && <p className="plan-introduction">{activePlan.introduction}</p>}
+                      {activePlan.why_today && <p className="today-reason">Why today · {activePlan.why_today.text}</p>}
+                      {activePlan.prompt && !session.promptDismissed && <aside className="small-prompt"><span>A little invitation</span><p>{activePlan.prompt}</p><button className="text-button" onClick={() => saveDiscoverySession({ promptDismissed: true })}>Skip this prompt</button></aside>}
                       <dl className="plan-facts">
                         <div><dt>Total time</dt><dd>{durationLabel(activePlan.total_minutes)}</dd></div>
                         <div><dt>Est. spend</dt><dd>${activePlan.total_cost_low}–${activePlan.total_cost_high}</dd></div>
@@ -590,9 +686,15 @@ export function DiscoveryApp() {
                                     {step.name}
                                   </button>
                                 </h3>
-                                <p>${step.cost_low}–${step.cost_high} · {confidenceLabel(step.confidence)}</p>
+                                {step.details?.activity && <p className="stop-activity">{step.details.activity}</p>}
+                                <p>{priceLabel(step)}{step.details?.neighborhood ? ` · ${step.details.neighborhood}` : ""}</p>
+                                {step.why_today && <p className="today-reason">{step.why_today.text}</p>}
+                                {step.details?.registration && <p className="registration-note">{step.details.registration}</p>}
+                                <div className="stop-actions"><button type="button" disabled={busy || !response.swap_token} aria-pressed={session.locked.includes(step.candidate_id)} onClick={() => saveDiscoverySession({ locked: session.locked.includes(step.candidate_id) ? session.locked.filter((id) => id !== step.candidate_id) : [...session.locked, step.candidate_id] })}>{session.locked.includes(step.candidate_id) ? "Kept · unlock" : "Keep this stop"}</button><button type="button" aria-pressed={session.visited.includes(step.candidate_id)} onClick={() => saveDiscoverySession({ visited: [...session.visited, step.candidate_id] })}>{session.visited.includes(step.candidate_id) ? "Visited ✓" : "I’ve been here"}</button><button type="button" disabled={busy || !response.swap_token || session.completed.includes(step.candidate_id) || session.locked.includes(step.candidate_id)} onClick={() => void remixPlan(step.candidate_id)}>Show another idea</button></div>
                                 <details>
                                   <summary>What to verify</summary>
+                                  <p>{confidenceLabel(step.confidence)}</p>
+                                  {step.details?.reviewed_at && <p>Field notes reviewed {step.details.reviewed_at}.</p>}
                                   {step.estimate_notes.map((note) => <p key={note}>{note}</p>)}
                                   {step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}
                                 </details>
@@ -604,8 +706,8 @@ export function DiscoveryApp() {
                       {(localDemo || response.swap_token) && (
                         <AdditionalOptions
                           key={activePlan.id}
-                          plan={activePlan}
-                          disabled={busy || inspectorOpen}
+                          plan={{ ...activePlan, additional_options: activePlan.additional_options?.filter((option) => !session.locked.includes(option.replaces_candidate_id)) }}
+                          disabled={busy || inspectorOpen || session.completed.length > 0}
                           pendingOptionId={pendingOptionId}
                           status={swapStatus}
                           error={swapError}

@@ -16,6 +16,7 @@ from .cache import MemoryProviderCache, PostgresProviderCache
 from .config import settings
 from .database import Database
 from .engine import generate_itineraries
+from .fieldguide import discovery_response, remix_inputs, remixed_response
 from .options import apply_generation_option, itinerary_input
 from .limits import (
     MemoryProviderThrottle,
@@ -37,6 +38,9 @@ from .schemas import (
     GeocodeResponse,
     HealthResponse,
     SharedItineraryResponse,
+    DiscoveryResponse,
+    RemixRequest,
+    RemixResponse,
 )
 from .sharing import PostgresShareStore, sign_snapshot, verify_generation, verify_snapshot
 
@@ -205,12 +209,11 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
         candidates, candidate_warnings = await request.app.state.providers.candidates(planner_input)
     except ProviderBusyError as exc:
         raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
-    result = generate_itineraries(
-        planner_input,
-        candidates,
-        weather,
-        tuple((*weather_warnings, *candidate_warnings)),
-    )
+    try:
+        result = await run_in_threadpool(generate_itineraries, planner_input, candidates, weather,
+                                        tuple((*weather_warnings, *candidate_warnings)))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     response = GenerationResponse.model_validate({
         "weather": asdict(result.weather),
         "plans": [asdict(plan) for plan in result.plans],
@@ -224,6 +227,48 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
     if request.app.state.share_store and settings.share_signing_secret:
         response.snapshot_token = sign_snapshot(payload, response, settings.share_signing_secret)
     return response
+
+
+@app.post("/v1/discovery/today", response_model=DiscoveryResponse)
+async def discover_today(payload: GenerateRequest, request: Request) -> DiscoveryResponse:
+    await enforce_limit(request, "discovery", 20, 600)
+    brief = itinerary_input(payload)
+    now = datetime.now(ZoneInfo("America/New_York"))
+    if brief.start_at.date() != now.date() or brief.start_at < now - timedelta(minutes=5):
+        raise HTTPException(status_code=422, detail="Choose now or later today in New York.")
+    try:
+        weather, weather_warnings = await request.app.state.providers.weather(brief)
+        candidates, candidate_warnings = await request.app.state.providers.candidates(brief)
+    except ProviderBusyError as exc:
+        raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
+    return await run_in_threadpool(discovery_response, brief, candidates, weather,
+                                  tuple((*weather_warnings, *candidate_warnings)), settings.fixture_mode)
+
+
+@app.post("/v1/itineraries/remix", response_model=RemixResponse)
+async def remix(payload: RemixRequest, request: Request) -> RemixResponse:
+    await enforce_limit(request, "remix", 12, 600)
+    # A same-day outing can last up to twelve hours. Remix always re-fetches
+    # availability and enforces the original deadline; snapshot-only swaps
+    # retain their existing one-hour lifetime.
+    if not verify_generation(payload.brief, payload.generation, payload.swap_token, request.app.state.swap_signing_secret, 86400):
+        raise HTTPException(status_code=400, detail="This editing session expired or changed. Make a fresh plan.")
+    try:
+        effective, brief, prefix = remix_inputs(payload, datetime.now(ZoneInfo("America/New_York")))
+        weather, weather_warnings = await request.app.state.providers.weather(brief)
+        candidates, candidate_warnings = await request.app.state.providers.candidates(brief)
+        result = await run_in_threadpool(remixed_response, payload, effective, brief, prefix, candidates, weather,
+                                        tuple((*weather_warnings, *candidate_warnings)))
+    except ProviderBusyError as exc:
+        raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Fresh availability was checked. New signatures cover the effective brief,
+    # whose original outing deadline is retained by remix_inputs.
+    result.generation.swap_token = sign_snapshot(result.brief, result.generation, request.app.state.swap_signing_secret)
+    if request.app.state.share_store and settings.share_signing_secret:
+        result.generation.snapshot_token = sign_snapshot(result.brief, result.generation, settings.share_signing_secret)
+    return result
 
 
 @app.post("/v1/itineraries/apply-option", response_model=GenerationResponse)

@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { nycTime } from "@/lib/nyc-time";
 import type { AdditionalOption, ItineraryPlan } from "@/lib/api-types";
 
 function time(value: string) {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(value));
+  return nycTime(value);
 }
 
 function duration(minutes: number) {

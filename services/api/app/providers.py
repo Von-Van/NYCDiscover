@@ -4,6 +4,8 @@ import asyncio
 import hashlib
 import json
 import math
+import re
+import html
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -13,7 +15,8 @@ from zoneinfo import ZoneInfo
 from .areas import find_area
 from .cache import ProviderCache
 from .config import Settings
-from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext
+from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext, WeatherPeriod, PlaceDetails
+from .curated import merge_curated
 from .fixtures import fixture_candidates, fixture_weather
 from .limits import MemoryProviderThrottle, ProviderThrottle
 
@@ -111,12 +114,13 @@ class ProviderHub:
 
     async def geocode(self, query: str) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
         if self.settings.fixture_mode:
+            area = find_area(query)
             return (
                 [
                     {
                         "label": f"{query}, New York, NY",
-                        "latitude": 40.7870,
-                        "longitude": -73.9754,
+                        "latitude": area.coordinates.latitude if area else 40.7870,
+                        "longitude": area.coordinates.longitude if area else -73.9754,
                     }
                 ],
                 (),
@@ -183,11 +187,17 @@ class ProviderHub:
                 precipitation_probability=int(probability),
                 is_wet=wet,
                 is_severe=any(word in description.lower() for word in ("severe", "thunderstorm")),
+                periods=tuple(WeatherPeriod(
+                    start_at=_parse_datetime(item['startTime']), end_at=_parse_datetime(item['endTime']),
+                    precipitation_probability=int(item.get('probabilityOfPrecipitation', {}).get('value') or 0),
+                    is_severe=any(w in str(item.get('shortForecast', '')).lower() for w in ('severe', 'thunderstorm')),
+                ) for item in periods if _parse_datetime(item.get('startTime')) and _parse_datetime(item.get('endTime'))),
             )
             warnings = ("Weather provider returned cached data.",) if point_stale or hourly_stale else ()
             return context, warnings
         except Exception:
-            return fixture_weather("clear"), (
+            from dataclasses import replace
+            return replace(fixture_weather("clear"), assumed=True), (
                 "Live weather is unavailable; using a neutral weather assumption.",
             )
 
@@ -217,7 +227,7 @@ class ProviderHub:
             items, provider_warnings = result
             candidates.extend(items)
             warnings.extend(provider_warnings)
-        return candidates, tuple(dict.fromkeys(warnings))
+        return merge_curated(candidates, request), tuple(dict.fromkeys(warnings))
 
     async def _overpass_candidates(
         self, request: ItineraryInput
@@ -300,6 +310,8 @@ class ProviderHub:
                     estimate_notes=tuple(notes),
                     opening_hours=tags.get("opening_hours"),
                     brand=_brand_from_tags(tags),
+                    schedule_kind="opening_hours",
+                    details=PlaceDetails(price_status="free" if category == "library" else "estimated"),
                 )
             )
         warnings: list[str] = []
@@ -318,7 +330,7 @@ class ProviderHub:
             "nyc-events",
             self.settings.nyc_event_calendar_url,
             params={
-                "startDate": request.start_at.strftime(event_date_format),
+                "startDate": request.start_at.replace(hour=0, minute=0, second=0).strftime(event_date_format),
                 "endDate": end_at.strftime(event_date_format),
                 "sort": "DATE",
             },
@@ -344,10 +356,7 @@ class ProviderHub:
             if not coordinates:
                 unmapped_events += 1
                 continue
-            notes = [
-                "Price is estimated because the event source does not provide a normalized cost.",
-                "Verify event details before leaving.",
-            ]
+            notes = ["Verify event details before leaving."]
             if approximate_area:
                 approximated_events += 1
                 notes.insert(
@@ -356,16 +365,25 @@ class ProviderHub:
                     "has no mappable address. Check the listing before travelling.",
                 )
             duration = int((end_at - start_at).total_seconds() / 60) if end_at else 75
+            description = html.unescape(re.sub(r'<[^>]*>', '', str(raw.get('shortDesc') or raw.get('description') or '')))[:500]
+            category = _event_category(raw)
+            price_low, price_high, price_status = _event_price(raw, description)
+            if price_status == 'unknown':
+                notes.append("Admission price is unknown; the budget includes an estimated allowance.")
+            drop_in = raw.get('dropIn') is True or str(raw.get('attendanceMode', '')).lower() in {'drop-in', 'drop_in'}
+            recurrence = 'recurring' if raw.get('recurring') is True else 'one_off' if raw.get('oneTimeOnly') is True else 'unknown'
+            if drop_in:
+                duration = int(raw.get('visitDurationMinutes') or 45)
             events.append(
                 Candidate(
                     id=f"nyc-event-{raw.get('id', name)}",
                     name=str(name),
-                    category="event",
-                    mood_tags=("social", "cultural", "chaotic"),
+                    category=category,
+                    mood_tags=CATEGORY_DEFAULTS.get(category, CATEGORY_DEFAULTS['event'])[4],
                     coordinates=coordinates,
                     duration_minutes=max(30, min(duration, 180)),
-                    cost_low=0,
-                    cost_high=25,
+                    cost_low=price_low,
+                    cost_high=price_high,
                     indoor=None,
                     source_name="NYC Event Calendar",
                     source_url=raw.get("url") or raw.get("link") or raw.get("permalink"),
@@ -374,6 +392,12 @@ class ProviderHub:
                     end_at=end_at,
                     estimate_notes=tuple(notes),
                     location_is_approximate=bool(approximate_area),
+                    schedule_kind='drop_in' if drop_in else 'fixed_start',
+                    recurrence=recurrence,
+                    final_day=end_at.date().isoformat() if raw.get('finalDay') is True and end_at else None,
+                    details=PlaceDetails(description=description, activity=description[:240] or 'Attend the listed activity; check the organizer for details.', price_status=price_status,
+                        registration='Registration required; check the organizer.' if raw.get('registrationRequired') is True else None,
+                        neighborhood=approximate_area or '', source_urls=tuple(filter(None, [raw.get('url') or raw.get('link') or raw.get('permalink')]))),
                 )
             )
         warnings: list[str] = []
@@ -553,8 +577,8 @@ def _is_geocodable(text: str | None) -> bool:
 
 
 def _event_is_canceled(raw: dict[str, Any]) -> bool:
-    value = raw.get("canceled")
-    return value is True or str(value).strip().lower() in {"1", "true", "yes"}
+    value = raw.get("canceled", raw.get("cancelled"))
+    return value is True or str(value).strip().lower() in {"1", "true", "yes"} or str(raw.get("status", "")).lower() in {"cancelled", "canceled"}
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -567,3 +591,24 @@ def _parse_datetime(value: Any) -> datetime | None:
         return parsed.astimezone(ZoneInfo("America/New_York"))
     except ValueError:
         return None
+
+
+def _event_category(raw: dict[str, Any]) -> str:
+    value = str(raw.get('category') or raw.get('eventType') or '').lower()
+    for category, words in {'music': ('music', 'concert'), 'comedy': ('comedy',), 'trivia': ('trivia',),
+                            'market': ('market',), 'gallery': ('exhibition', 'gallery'), 'park': ('nature walk',)}.items():
+        if any(word in value for word in words):
+            return category
+    return 'event'
+
+
+def _event_price(raw: dict[str, Any], description: str) -> tuple[float, float, str]:
+    if raw.get('isFree') is True or str(raw.get('cost', '')).strip().lower() == 'free':
+        return 0, 0, 'free'
+    # Match explicit admission language, not e.g. "free refreshments".
+    if re.search(r'\b(?:admission is free|free admission|a free (?:city-sponsored )?(?:workshop|event|concert))\b', description, re.I) and not re.search(r'\b(?:not free|not a free)\b', description, re.I):
+        return 0, 0, 'free'
+    cost = raw.get('cost')
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool) and 0 <= cost <= 500:
+        return float(cost), float(cost), 'free' if cost == 0 else 'verified'
+    return 0, 25, 'unknown'

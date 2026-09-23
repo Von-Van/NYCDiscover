@@ -1,0 +1,826 @@
+{
+  "version": 1,
+  "places": [
+    {
+      "id": "curated-roerich",
+      "name": "Nicholas Roerich Museum",
+      "borough": "Manhattan",
+      "neighborhood": "Upper West Side",
+      "address_source": "https://www.roerich.org/",
+      "coordinates": {
+        "latitude": 40.8029,
+        "longitude": -73.9683
+      },
+      "category": "museum",
+      "description": "Townhouse galleries devoted to Nicholas Roerich’s paintings.",
+      "activity": "Spend a little longer with one of the mountain paintings.",
+      "source_urls": [
+        "https://www.roerich.org/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": "Tu-Fr 12:00-16:00; Sa-Su 12:00-17:00",
+      "signature": false,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-schwarzman",
+      "name": "Stephen A. Schwarzman Building",
+      "borough": "Manhattan",
+      "neighborhood": "Midtown",
+      "address_source": "https://www.nypl.org/spotlight/schwarzman-plan-your-visit",
+      "coordinates": {
+        "latitude": 40.7532,
+        "longitude": -73.9822
+      },
+      "category": "library",
+      "description": "NYPL’s landmark research library beside Bryant Park.",
+      "activity": "Explore the public exhibition spaces; check access to research rooms.",
+      "source_urls": [
+        "https://www.nypl.org/spotlight/schwarzman-plan-your-visit"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-riverside",
+      "name": "Riverside Park",
+      "borough": "Manhattan",
+      "neighborhood": "Upper West Side",
+      "address_source": "https://www.nycgovparks.org/parks/riverside-park",
+      "coordinates": {
+        "latitude": 40.8007,
+        "longitude": -73.9708
+      },
+      "category": "park",
+      "description": "A stretch of parkland along Manhattan’s Hudson River edge.",
+      "activity": "Take a short riverside walk and pause by the water.",
+      "source_urls": [
+        "https://www.nycgovparks.org/parks/riverside-park"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-book-culture",
+      "name": "Book Culture on 112th",
+      "borough": "Manhattan",
+      "neighborhood": "Morningside Heights",
+      "address_source": "https://bookculture.com/",
+      "coordinates": {
+        "latitude": 40.8063,
+        "longitude": -73.9652
+      },
+      "category": "bookstore",
+      "description": "An independent bookstore near Columbia University.",
+      "activity": "Browse a subject you would not usually pick up.",
+      "source_urls": [
+        "https://bookculture.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 25,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-zabars",
+      "name": "Zabar’s",
+      "borough": "Manhattan",
+      "neighborhood": "Upper West Side",
+      "address_source": "https://www.zabars.com/",
+      "coordinates": {
+        "latitude": 40.7846,
+        "longitude": -73.9795
+      },
+      "category": "restaurant",
+      "description": "An Upper West Side food shop known for coffee and smoked fish.",
+      "activity": "Choose something from the prepared-food counter for a small meal.",
+      "source_urls": [
+        "https://www.zabars.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 12,
+      "cost_high": 30,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-79th-market",
+      "name": "79th Street Greenmarket",
+      "borough": "Manhattan",
+      "neighborhood": "Upper West Side",
+      "address_source": "https://grownyc.org/greenmarkets/",
+      "coordinates": {
+        "latitude": 40.7822,
+        "longitude": -73.9773
+      },
+      "category": "market",
+      "description": "A Sunday farmers market beside the American Museum of Natural History.",
+      "activity": "Browse seasonal produce; purchases are optional.",
+      "source_urls": [
+        "https://grownyc.org/greenmarkets/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null,
+      "schedule": {
+        "weekdays": [
+          6
+        ],
+        "opens": "09:00",
+        "closes": "16:00",
+        "reviewed_at": "2026-09-21",
+        "season_end": null,
+        "source_url": "https://grownyc.org/greenmarkets/"
+      }
+    },
+    {
+      "id": "curated-brooklyn-museum",
+      "name": "Brooklyn Museum",
+      "borough": "Brooklyn",
+      "neighborhood": "Prospect Heights",
+      "address_source": "https://www.brooklynmuseum.org/visit",
+      "coordinates": {
+        "latitude": 40.6712,
+        "longitude": -73.9636
+      },
+      "category": "museum",
+      "description": "An art museum on Eastern Parkway, close to Prospect Park.",
+      "activity": "Pick one collection or exhibition to explore at your own pace.",
+      "source_urls": [
+        "https://www.brooklynmuseum.org/visit"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 30,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-central-library",
+      "name": "Central Library",
+      "borough": "Brooklyn",
+      "neighborhood": "Prospect Heights",
+      "address_source": "https://www.bklynlibrary.org/locations/central",
+      "coordinates": {
+        "latitude": 40.6725,
+        "longitude": -73.9682
+      },
+      "category": "library",
+      "description": "An Art Deco library with a sweeping entrance on Grand Army Plaza.",
+      "activity": "Look closely at the entrance sculptures, then browse inside.",
+      "source_urls": [
+        "https://www.bklynlibrary.org/locations/central"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": "Mo-Th 09:00-20:00; Fr-Sa 09:00-18:00; Su 13:00-17:00",
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-prospect-park",
+      "name": "Prospect Park",
+      "borough": "Brooklyn",
+      "neighborhood": "Park Slope",
+      "address_source": "https://www.prospectpark.org/",
+      "coordinates": {
+        "latitude": 40.6699,
+        "longitude": -73.9743
+      },
+      "category": "park",
+      "description": "Brooklyn parkland with meadows, woodland paths, and a lake.",
+      "activity": "Walk a short loop through the Long Meadow.",
+      "source_urls": [
+        "https://www.prospectpark.org/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-greenlight",
+      "name": "Greenlight Bookstore",
+      "borough": "Brooklyn",
+      "neighborhood": "Fort Greene",
+      "address_source": "https://greenlightbookstore.com/",
+      "coordinates": {
+        "latitude": 40.6864,
+        "longitude": -73.9748
+      },
+      "category": "bookstore",
+      "description": "An independent bookstore on Fulton Street in Fort Greene.",
+      "activity": "Let a staff-pick shelf suggest your next read.",
+      "source_urls": [
+        "https://greenlightbookstore.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 25,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-sahadis",
+      "name": "Sahadi’s Atlantic Avenue",
+      "borough": "Brooklyn",
+      "neighborhood": "Brooklyn Heights",
+      "address_source": "https://sahadis.com/",
+      "coordinates": {
+        "latitude": 40.6891,
+        "longitude": -73.9929
+      },
+      "category": "restaurant",
+      "description": "A specialty food shop on Atlantic Avenue with Middle Eastern roots.",
+      "activity": "Explore the prepared foods and choose a small meal.",
+      "source_urls": [
+        "https://sahadis.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 12,
+      "cost_high": 28,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-grand-army-market",
+      "name": "Grand Army Plaza Greenmarket",
+      "borough": "Brooklyn",
+      "neighborhood": "Prospect Heights",
+      "address_source": "https://grownyc.org/greenmarkets/",
+      "coordinates": {
+        "latitude": 40.6738,
+        "longitude": -73.9702
+      },
+      "category": "market",
+      "description": "A Saturday farmers market at the north entrance to Prospect Park.",
+      "activity": "Browse the stalls before a park or library visit.",
+      "source_urls": [
+        "https://grownyc.org/greenmarkets/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": null,
+      "schedule": {
+        "weekdays": [
+          5
+        ],
+        "opens": "08:00",
+        "closes": "16:00",
+        "reviewed_at": "2026-09-21",
+        "season_end": null,
+        "source_url": "https://grownyc.org/greenmarkets/"
+      }
+    },
+    {
+      "id": "curated-queens-museum",
+      "name": "Queens Museum",
+      "borough": "Queens",
+      "neighborhood": "Flushing Meadows",
+      "address_source": "https://queensmuseum.org/visit/",
+      "coordinates": {
+        "latitude": 40.7455,
+        "longitude": -73.8465
+      },
+      "category": "museum",
+      "description": "An art museum in Flushing Meadows Corona Park.",
+      "activity": "Check the current galleries and leave time to explore the park.",
+      "source_urls": [
+        "https://queensmuseum.org/visit/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 8,
+      "price_status": "verified",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry.",
+      "registration": "Timed entry recommended; organized groups require reservations. Admission is pay what you wish."
+    },
+    {
+      "id": "curated-moving-image",
+      "name": "Museum of the Moving Image",
+      "borough": "Queens",
+      "neighborhood": "Astoria",
+      "address_source": "https://movingimage.org/visit/",
+      "coordinates": {
+        "latitude": 40.7563,
+        "longitude": -73.9239
+      },
+      "category": "museum",
+      "description": "A museum exploring film, television, and moving-image technology.",
+      "activity": "Explore the galleries; screenings have their own tickets.",
+      "source_urls": [
+        "https://movingimage.org/visit/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 20,
+      "cost_high": 22,
+      "price_status": "estimated",
+      "opening_hours": "Th 14:00-18:00; Fr 14:00-20:00; Sa-Su 11:00-18:00",
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-socrates",
+      "name": "Socrates Sculpture Park",
+      "borough": "Queens",
+      "neighborhood": "Astoria",
+      "address_source": "https://socratessculpturepark.org/",
+      "coordinates": {
+        "latitude": 40.7685,
+        "longitude": -73.9368
+      },
+      "category": "park",
+      "description": "An outdoor space for large-scale sculpture on the East River.",
+      "activity": "Walk around a sculpture and notice how its shape changes.",
+      "source_urls": [
+        "https://socratessculpturepark.org/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-astoria-park",
+      "name": "Astoria Park",
+      "borough": "Queens",
+      "neighborhood": "Astoria",
+      "address_source": "https://www.nycgovparks.org/parks/astoria-park",
+      "coordinates": {
+        "latitude": 40.7785,
+        "longitude": -73.9228
+      },
+      "category": "park",
+      "description": "Waterfront parkland beneath the neighborhood’s bridges.",
+      "activity": "Take a short walk along the river’s edge.",
+      "source_urls": [
+        "https://www.nycgovparks.org/parks/astoria-park"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-astoria-library",
+      "name": "Astoria Library",
+      "borough": "Queens",
+      "neighborhood": "Astoria",
+      "address_source": "https://www.queenslibrary.org/about-us/locations/astoria",
+      "coordinates": {
+        "latitude": 40.7724,
+        "longitude": -73.9264
+      },
+      "category": "library",
+      "description": "A Queens Public Library branch on Astoria Boulevard.",
+      "activity": "Step inside to browse or read quietly for a while.",
+      "source_urls": [
+        "https://www.queenslibrary.org/about-us/locations/astoria"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-comfortland",
+      "name": "Comfortland",
+      "borough": "Queens",
+      "neighborhood": "Astoria",
+      "address_source": "https://hellocomfortland.com/",
+      "coordinates": {
+        "latitude": 40.7647,
+        "longitude": -73.9144
+      },
+      "category": "restaurant",
+      "description": "An Astoria stop for sandwiches, treats, and coffee.",
+      "activity": "Choose a sandwich or a sweet treat from today’s menu.",
+      "source_urls": [
+        "https://hellocomfortland.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 12,
+      "cost_high": 28,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-bronx-museum",
+      "name": "The Bronx Museum",
+      "borough": "The Bronx",
+      "neighborhood": "Concourse",
+      "address_source": "https://bronxmuseum.org/visit/",
+      "coordinates": {
+        "latitude": 40.831,
+        "longitude": -73.9197
+      },
+      "category": "museum",
+      "description": "A contemporary art museum on the Grand Concourse.",
+      "activity": "Explore the current exhibitions in the open galleries.",
+      "source_urls": [
+        "https://bronxmuseum.org/visit/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": "We-Su 11:00-18:00",
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry.",
+      "closed_dates": [
+        [
+          "2026-09-07",
+          "2026-10-09"
+        ]
+      ],
+      "registration": "Groups of 10 or more need advance arrangements."
+    },
+    {
+      "id": "curated-bronx-library",
+      "name": "Bronx Library Center",
+      "borough": "The Bronx",
+      "neighborhood": "Fordham",
+      "address_source": "https://www.nypl.org/locations/bronx-library-center/explore",
+      "coordinates": {
+        "latitude": 40.8612,
+        "longitude": -73.8948
+      },
+      "category": "library",
+      "description": "NYPL’s major library center on East Kingsbridge Road.",
+      "activity": "Browse the shelves and take a quiet reading break.",
+      "source_urls": [
+        "https://www.nypl.org/locations/bronx-library-center/explore"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-wave-hill",
+      "name": "Wave Hill",
+      "borough": "The Bronx",
+      "neighborhood": "Riverdale",
+      "address_source": "https://www.wavehill.org/visit",
+      "coordinates": {
+        "latitude": 40.8978,
+        "longitude": -73.9113
+      },
+      "category": "park",
+      "description": "Public gardens overlooking the Hudson River.",
+      "activity": "Follow a garden path and pause at a river overlook.",
+      "source_urls": [
+        "https://www.wavehill.org/visit"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 15,
+      "price_status": "estimated",
+      "opening_hours": "Tu-Su 10:00-17:30",
+      "signature": false,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry.",
+      "hours_overrides": {
+        "2026-09-24": "10:00-14:00"
+      }
+    },
+    {
+      "id": "curated-van-cortlandt",
+      "name": "Van Cortlandt Park",
+      "borough": "The Bronx",
+      "neighborhood": "Kingsbridge",
+      "address_source": "https://vancortlandt.org/",
+      "coordinates": {
+        "latitude": 40.8899,
+        "longitude": -73.8984
+      },
+      "category": "park",
+      "description": "A large Bronx park with trails and broad recreation grounds.",
+      "activity": "Choose a short trail or an easy walk around the parade ground.",
+      "source_urls": [
+        "https://vancortlandt.org/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-lit-bar",
+      "name": "The Lit. Bar",
+      "borough": "The Bronx",
+      "neighborhood": "Mott Haven",
+      "address_source": "https://www.thelitbar.com/",
+      "coordinates": {
+        "latitude": 40.8071,
+        "longitude": -73.9277
+      },
+      "category": "bookstore",
+      "description": "An independent bookstore and wine bar in Mott Haven.",
+      "activity": "Browse the book selection; buying a book or drink is optional.",
+      "source_urls": [
+        "https://www.thelitbar.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 25,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-arthur-market",
+      "name": "Arthur Avenue Retail Market",
+      "borough": "The Bronx",
+      "neighborhood": "Belmont",
+      "address_source": "https://www.arthuravenuebronx.com/",
+      "coordinates": {
+        "latitude": 40.854,
+        "longitude": -73.888
+      },
+      "category": "restaurant",
+      "description": "An indoor food market in the Bronx’s Little Italy.",
+      "activity": "Browse the food counters and choose something for lunch.",
+      "source_urls": [
+        "https://www.arthuravenuebronx.com/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 12,
+      "cost_high": 30,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-si-museum",
+      "name": "Staten Island Museum",
+      "borough": "Staten Island",
+      "neighborhood": "Snug Harbor",
+      "address_source": "https://www.statenislandmuseum.org/visit/",
+      "coordinates": {
+        "latitude": 40.6439,
+        "longitude": -74.1016
+      },
+      "category": "museum",
+      "description": "A museum bringing together art, natural science, and local history.",
+      "activity": "Pick one exhibition to explore before a walk around the campus.",
+      "source_urls": [
+        "https://www.statenislandmuseum.org/visit/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 15,
+      "price_status": "estimated",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-snug-harbor",
+      "name": "Snug Harbor outdoor grounds",
+      "borough": "Staten Island",
+      "neighborhood": "Snug Harbor",
+      "address_source": "https://snug-harbor.org/visit/hours-admissions/",
+      "coordinates": {
+        "latitude": 40.6436,
+        "longitude": -74.1021
+      },
+      "category": "park",
+      "description": "A former sailors’ retirement campus with gardens and historic buildings.",
+      "activity": "Explore the outdoor grounds; individual attractions may charge admission.",
+      "source_urls": [
+        "https://snug-harbor.org/visit/hours-admissions/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": true,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-st-george-library",
+      "name": "St. George Library Center",
+      "borough": "Staten Island",
+      "neighborhood": "St. George",
+      "address_source": "https://www.nypl.org/locations/st-george-library-center",
+      "coordinates": {
+        "latitude": 40.6422,
+        "longitude": -74.0764
+      },
+      "category": "library",
+      "description": "A neighborhood library on Central Avenue near the ferry terminal.",
+      "activity": "Take a reading break before exploring St. George.",
+      "source_urls": [
+        "https://www.nypl.org/locations/st-george-library-center"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": "Find one detail you would have missed if you were in a hurry."
+    },
+    {
+      "id": "curated-flagship",
+      "name": "Flagship Brewing Company",
+      "borough": "Staten Island",
+      "neighborhood": "Tompkinsville",
+      "address_source": "https://flagshipbrewery.nyc/",
+      "coordinates": {
+        "latitude": 40.6376,
+        "longitude": -74.0757
+      },
+      "category": "bar",
+      "description": "A Staten Island brewery with a taproom on Minthorne Street.",
+      "activity": "Try a beer in the taproom and leave time for conversation.",
+      "source_urls": [
+        "https://flagshipbrewery.nyc/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 8,
+      "cost_high": 24,
+      "price_status": "estimated",
+      "opening_hours": "We 17:00-23:00; Th-Sa 12:00-24:00; Su 12:00-20:00",
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-etg",
+      "name": "Every Thing Goes Book Cafe",
+      "borough": "Staten Island",
+      "neighborhood": "Tompkinsville",
+      "address_source": "https://www.etgstores.com/bookcafe",
+      "coordinates": {
+        "latitude": 40.6377,
+        "longitude": -74.0759
+      },
+      "category": "bookstore",
+      "description": "A used-book shop with coffee, records, and several rooms to browse.",
+      "activity": "Browse a shelf, then take a coffee break if you like.",
+      "source_urls": [
+        "https://www.etgstores.com/bookcafe"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 20,
+      "price_status": "estimated",
+      "opening_hours": "We-Sa 12:00-18:00",
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null
+    },
+    {
+      "id": "curated-st-george-market",
+      "name": "St. George Greenmarket",
+      "borough": "Staten Island",
+      "neighborhood": "St. George",
+      "address_source": "https://grownyc.org/greenmarkets/",
+      "coordinates": {
+        "latitude": 40.6426,
+        "longitude": -74.0776
+      },
+      "category": "market",
+      "description": "A Saturday farmers market in St. George.",
+      "activity": "Browse seasonal food before exploring the neighborhood.",
+      "source_urls": [
+        "https://grownyc.org/greenmarkets/"
+      ],
+      "reviewed_at": "2026-09-21",
+      "operations_reviewed_at": "2026-09-21",
+      "cost_low": 0,
+      "cost_high": 0,
+      "price_status": "free",
+      "opening_hours": null,
+      "signature": false,
+      "provider_ids": [],
+      "prompt": null,
+      "schedule": {
+        "weekdays": [
+          5
+        ],
+        "opens": "08:00",
+        "closes": "13:00",
+        "reviewed_at": "2026-09-21",
+        "season_end": null,
+        "source_url": "https://grownyc.org/greenmarkets/"
+      }
+    }
+  ]
+}

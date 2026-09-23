@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from dataclasses import replace
 
-from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext
+from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext, PlaceDetails
 
 
 def fixture_weather(kind: str = "clear") -> WeatherContext:
@@ -22,8 +23,12 @@ def fixture_weather(kind: str = "clear") -> WeatherContext:
 
 
 def fixture_candidates(request: ItineraryInput) -> list[Candidate]:
+    from .curated import curated_candidates
+    from .engine import haversine_miles
+    if haversine_miles(request.coordinates, Coordinates(40.787, -73.9754)) > 3:
+        return [replace(c, source_name='Fixture field notes') for c in curated_candidates(request)]
     start = request.start_at
-    return [
+    candidates = [
         Candidate(
             id="fixture-roerich",
             name="Nicholas Roerich Museum",
@@ -181,4 +186,12 @@ def fixture_candidates(request: ItineraryInput) -> list[Candidate]:
             estimate_notes=("Access and duration should be verified.",),
         ),
     ]
-
+    from .editorial import ACTIVITIES
+    return [replace(c, details=PlaceDetails(
+        description='A sample neighborhood stop for trying out your afternoon.',
+        activity=ACTIVITIES.get(c.category, 'Enjoy this sample event as part of your outing.'),
+        neighborhood='Upper West Side', borough='Manhattan',
+        price_status='free' if c.cost_high == 0 else 'estimated',
+        prompt='Notice one detail you would have missed in a hurry.' if c.category == 'museum' else None,
+        signature=c.category in ('park', 'museum'),
+    )) for c in candidates]

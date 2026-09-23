@@ -6,6 +6,9 @@ import type {
   GenerationResponse,
   GeocodeResponse,
   SharedItineraryResponse,
+  DiscoveryResponse,
+  RemixRequest,
+  RemixResponse,
 } from "./api-types";
 
 const API_URL =
@@ -45,6 +48,20 @@ export async function generateItineraries(request: GenerateRequest): Promise<Gen
     signal: AbortSignal.timeout(20_000),
   });
   return parseResponse<GenerationResponse>(response);
+}
+
+export async function discoverToday(request: GenerateRequest, signal?: AbortSignal): Promise<DiscoveryResponse> {
+  return parseResponse<DiscoveryResponse>(await fetch(`${API_URL}/v1/discovery/today`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000),
+  }));
+}
+
+export async function remixItinerary(request: RemixRequest): Promise<RemixResponse> {
+  return parseResponse<RemixResponse>(await fetch(`${API_URL}/v1/itineraries/remix`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
+    signal: AbortSignal.timeout(20_000),
+  }));
 }
 
 export async function createShare(request: CreateShareRequest): Promise<CreateShareResponse> {

@@ -79,6 +79,7 @@ describe("DiscoveryApp", () => {
   it("allows up to three moods while keeping one selected", () => {
     render(<DiscoveryApp />);
 
+    fireEvent.click(screen.getByRole("button", { name: /More details/ }));
     const social = screen.getByRole("button", { name: "Social" });
     const cultural = screen.getByRole("button", { name: "Cultural" });
     const foodFocused = screen.getByRole("button", { name: "Food-focused" });

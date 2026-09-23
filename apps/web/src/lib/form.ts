@@ -1,4 +1,5 @@
 import type { Coordinates, GenerateRequest, Mood, TransportMode } from "./api-types";
+import { laterTodayInNYC } from "./nyc-time";
 
 export interface DiscoveryForm {
   locationLabel: string;
@@ -27,11 +28,7 @@ export function validateForm(form: DiscoveryForm): string[] {
 
 export function toGenerateRequest(form: DiscoveryForm, regenerationSeed: number): GenerateRequest {
   if (!form.coordinates) throw new Error("A starting location is required.");
-  const start = new Date();
-  if (form.startMode === "later") {
-    const [hours, minutes] = form.laterTime.split(":").map(Number);
-    start.setHours(hours, minutes, 0, 0);
-  }
+  const start = form.startMode === "later" ? laterTodayInNYC(form.laterTime) : new Date();
   return {
     location_label: form.locationLabel,
     coordinates: form.coordinates,

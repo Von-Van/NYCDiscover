@@ -122,7 +122,7 @@ def test_repeat_swaps_rebuild_route_totals_and_make_removed_stops_available():
     assert changed.steps[1].start_at == request.start_at + timedelta(minutes=44)
     assert changed.steps[1].travel_before.from_label == meal.name
     assert (changed.total_minutes, changed.total_cost_low, changed.total_cost_high, changed.confidence) == (64, 8, 15, 0.8)
-    assert changed.title == "Food + Museum"
+    assert changed.title == "A good bite, then a little art"
     assert changed.id == plans[0].id
     assert replace(updated[1], additional_options=()) == replace(plans[1], additional_options=())
     assert any(item.step.candidate_id == first.id for item in changed.additional_options)

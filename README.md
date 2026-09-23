@@ -4,6 +4,10 @@ NYC Discover turns a free block of time into a small, practical same-day itinera
 
 The desktop web app is a launch candidate for a guest-only public beta at `nycdiscover.vercel.app`. Fixture mode remains the default for local development and the intentional first-production bootstrap.
 
+## Daily neighborhood field guide
+
+The daily edition adds reviewed knowledge for 30 places across all five boroughs, source-grounded reasons to visit today, required centerpieces, adjustable discovery, session-only feedback, and a mobile Now / Next outing view. [Implementation, content review, rollout, and evaluation](docs/field-guide.md) describe the four acceptance stages. Run `npm run content:validate` before release.
+
 ## Stack
 
 - `apps/web`: Next.js 16, React 19, MapLibre, Vitest, Playwright

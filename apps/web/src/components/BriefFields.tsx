@@ -40,6 +40,7 @@ interface BriefFieldsProps {
   errors: string[];
   disabled?: boolean;
   compact?: boolean;
+  progressive?: boolean;
   onLocateMe: () => void;
   onResolveLocation: () => void;
   onUpdate: <K extends keyof DiscoveryForm>(key: K, value: DiscoveryForm[K]) => void;
@@ -51,12 +52,13 @@ export function BriefFields({
   errors,
   disabled = false,
   compact = false,
+  progressive = false,
   onLocateMe,
   onResolveLocation,
   onUpdate,
 }: BriefFieldsProps) {
   return (
-    <div className={compact ? "brief-fields brief-fields-compact" : "brief-fields"}>
+    <div className={`${compact ? "brief-fields brief-fields-compact" : "brief-fields"}${progressive ? " brief-fields-progressive" : ""}`}>
       <fieldset className="form-section location-section" disabled={disabled}>
         <legend>
           <span>1</span> Start here
@@ -149,7 +151,7 @@ export function BriefFields({
           />
         </fieldset>
 
-        <fieldset className="form-section" disabled={disabled}>
+        <fieldset className="form-section" disabled={disabled} hidden={progressive}>
           <legend>
             <span>5</span> Group size
           </legend>
@@ -169,7 +171,7 @@ export function BriefFields({
         </fieldset>
       </div>
 
-      <fieldset className="form-section" disabled={disabled}>
+      <fieldset className="form-section" disabled={disabled} hidden={progressive}>
         <legend>
           <span>6</span> How are you moving?
         </legend>
@@ -201,7 +203,7 @@ export function BriefFields({
         </div>
       </fieldset>
 
-      <fieldset className="form-section mood-section" disabled={disabled}>
+      <fieldset className="form-section mood-section" disabled={disabled} hidden={progressive}>
         <legend>
           <span>7</span> Pick up to 3 moods
         </legend>

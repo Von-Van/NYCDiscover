@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/discovery/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discover Today */
+        post: operations["discover_today_v1_discovery_today_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/itineraries/remix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remix */
+        post: operations["remix_v1_itineraries_remix_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/itineraries/apply-option": {
         parameters: {
             query?: never;
@@ -195,6 +229,21 @@ export interface components {
              * @default false
              */
             location_is_approximate: boolean;
+            details?: components["schemas"]["PlaceDetailsSchema"] | null;
+            /**
+             * Schedule Kind
+             * @default fixed_start
+             * @enum {string}
+             */
+            schedule_kind: "fixed_start" | "drop_in" | "opening_hours";
+            /**
+             * Recurrence
+             * @default unknown
+             * @enum {string}
+             */
+            recurrence: "unknown" | "one_off" | "recurring";
+            /** Final Day */
+            final_day?: string | null;
         };
         /** CoordinatesSchema */
         CoordinatesSchema: {
@@ -223,6 +272,30 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+        };
+        /** DiscoveryCard */
+        DiscoveryCard: {
+            /** Label */
+            label: string;
+            step: components["schemas"]["TimelineStepResponse"];
+        };
+        /** DiscoveryResponse */
+        DiscoveryResponse: {
+            /** Cards */
+            cards: components["schemas"]["DiscoveryCard"][];
+            weather: components["schemas"]["WeatherResponse"];
+            /** Warnings */
+            warnings: string[];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Data Mode
+             * @enum {string}
+             */
+            data_mode: "fixture" | "live";
         };
         /** GenerateRequest */
         GenerateRequest: {
@@ -264,6 +337,22 @@ export interface components {
              * @default 0
              */
             regeneration_seed: number;
+            /** Centerpiece Id */
+            centerpiece_id?: string | null;
+            /**
+             * Discovery Mode
+             * @default new
+             * @enum {string}
+             */
+            discovery_mode: "easy" | "new" | "surprise";
+            /** Seen Candidate Ids */
+            seen_candidate_ids?: string[];
+            /** Visited Candidate Ids */
+            visited_candidate_ids?: string[];
+            /** Excluded Candidate Ids */
+            excluded_candidate_ids?: string[];
+            /** Locked Candidate Ids */
+            locked_candidate_ids?: string[];
         };
         /** GenerationResponse */
         "GenerationResponse-Input": {
@@ -369,6 +458,16 @@ export interface components {
             estimate_notes: string[];
             /** Additional Options */
             additional_options?: components["schemas"]["AdditionalOptionResponse-Input"][];
+            /**
+             * Introduction
+             * @default
+             */
+            introduction: string;
+            why_today?: components["schemas"]["TodayReasonSchema"] | null;
+            /** Prompt */
+            prompt?: string | null;
+            /** Character */
+            character?: string | null;
         };
         /** ItineraryPlanResponse */
         "ItineraryPlanResponse-Output": {
@@ -394,6 +493,96 @@ export interface components {
             estimate_notes: string[];
             /** Additional Options */
             additional_options?: components["schemas"]["AdditionalOptionResponse-Output"][];
+            /**
+             * Introduction
+             * @default
+             */
+            introduction: string;
+            why_today?: components["schemas"]["TodayReasonSchema"] | null;
+            /** Prompt */
+            prompt?: string | null;
+            /** Character */
+            character?: string | null;
+        };
+        /** PlaceDetailsSchema */
+        PlaceDetailsSchema: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Activity
+             * @default
+             */
+            activity: string;
+            /**
+             * Neighborhood
+             * @default
+             */
+            neighborhood: string;
+            /**
+             * Borough
+             * @default
+             */
+            borough: string;
+            /**
+             * Price Status
+             * @default estimated
+             * @enum {string}
+             */
+            price_status: "free" | "verified" | "estimated" | "unknown";
+            /** Registration */
+            registration?: string | null;
+            /** Source Urls */
+            source_urls?: string[];
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /**
+             * Signature
+             * @default false
+             */
+            signature: boolean;
+            /** Prompt */
+            prompt?: string | null;
+        };
+        /** RemixRequest */
+        RemixRequest: {
+            brief: components["schemas"]["GenerateRequest"];
+            generation: components["schemas"]["GenerationResponse-Input"];
+            /** Swap Token */
+            swap_token: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Locked Candidate Ids */
+            locked_candidate_ids?: string[];
+            /** Excluded Candidate Ids */
+            excluded_candidate_ids?: string[];
+            /** Seen Candidate Ids */
+            seen_candidate_ids?: string[];
+            /** Visited Candidate Ids */
+            visited_candidate_ids?: string[];
+            /**
+             * Discovery Mode
+             * @default new
+             * @enum {string}
+             */
+            discovery_mode: "easy" | "new" | "surprise";
+            /** Completed Candidate Ids */
+            completed_candidate_ids?: string[];
+            /**
+             * Continue Outing
+             * @default false
+             */
+            continue_outing: boolean;
+            current_coordinates?: components["schemas"]["CoordinatesSchema"] | null;
+            /** Current Location Label */
+            current_location_label?: string | null;
+        };
+        /** RemixResponse */
+        RemixResponse: {
+            brief: components["schemas"]["GenerateRequest"];
+            generation: components["schemas"]["GenerationResponse-Output"];
         };
         /** SharedBrief */
         SharedBrief: {
@@ -476,6 +665,23 @@ export interface components {
             /** Estimate Notes */
             estimate_notes: string[];
             travel_before: components["schemas"]["TravelLegResponse"];
+            details?: components["schemas"]["PlaceDetailsSchema"] | null;
+            why_today?: components["schemas"]["TodayReasonSchema"] | null;
+            /** Schedule Kind */
+            schedule_kind?: ("fixed_start" | "drop_in" | "opening_hours") | null;
+            /** Window Start At */
+            window_start_at?: string | null;
+            /** Window End At */
+            window_end_at?: string | null;
+        };
+        /** TodayReasonSchema */
+        TodayReasonSchema: {
+            /** Kind */
+            kind: string;
+            /** Text */
+            text: string;
+            /** Source Url */
+            source_url?: string | null;
         };
         /** TravelLegResponse */
         TravelLegResponse: {
@@ -505,6 +711,26 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WeatherPeriodSchema */
+        WeatherPeriodSchema: {
+            /**
+             * Start At
+             * Format: date-time
+             */
+            start_at: string;
+            /**
+             * End At
+             * Format: date-time
+             */
+            end_at: string;
+            /** Precipitation Probability */
+            precipitation_probability: number;
+            /**
+             * Is Severe
+             * @default false
+             */
+            is_severe: boolean;
+        };
         /** WeatherResponse */
         WeatherResponse: {
             /** Summary */
@@ -519,6 +745,13 @@ export interface components {
             is_severe: boolean;
             /** Source Name */
             source_name: string;
+            /** Periods */
+            periods?: components["schemas"]["WeatherPeriodSchema"][];
+            /**
+             * Assumed
+             * @default false
+             */
+            assumed: boolean;
         };
     };
     responses: never;
@@ -600,6 +833,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerationResponse-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_today_v1_discovery_today_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remix_v1_itineraries_remix_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemixRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemixResponse"];
                 };
             };
             /** @description Validation Error */

@@ -29,6 +29,20 @@ def _canonical_snapshot(brief: GenerateRequest, generation: GenerationResponse) 
         if not plan["additional_options"]:
             plan.pop("additional_options")
     payload = {"brief": brief.model_dump(mode="json"), "generation": generation_data}
+    # Additive field defaults must not invalidate a pre-field-guide token. Strip
+    # only the new fields at their defaults, never legacy signed values.
+    defaults = {"centerpiece_id": None, "discovery_mode": "new", "seen_candidate_ids": [],
+                "visited_candidate_ids": [], "excluded_candidate_ids": [], "locked_candidate_ids": [],
+                "details": None, "schedule_kind": "fixed_start", "recurrence": "unknown", "final_day": None,
+                "introduction": "", "why_today": None, "prompt": None, "character": None,
+                "periods": [], "assumed": False, "window_start_at": None, "window_end_at": None}
+    def prune(value):
+        if isinstance(value, dict):
+            return {k: prune(v) for k, v in value.items() if (k not in defaults or v != defaults[k]) and not (k == "schedule_kind" and v is None)}
+        if isinstance(value, list):
+            return [prune(item) for item in value]
+        return value
+    payload = prune(payload)
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
 
@@ -90,6 +104,10 @@ def redact_share(request: CreateShareRequest) -> tuple[SharedBrief, GenerationRe
         plan.additional_options = []
         if plan.steps:
             plan.steps[0].travel_before.from_label = "Starting point"
+        public_names = {step.name for step in plan.steps}
+        for step in plan.steps:
+            if step.travel_before.from_label not in public_names:
+                step.travel_before.from_label = "Starting point"
     return brief, generation
 
 

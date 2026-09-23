@@ -28,8 +28,8 @@ test.beforeEach(async ({ page, baseURL }, testInfo) => {
 async function generatePlan(page: Page) {
   await page.goto("/");
   await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
-  await page.getByRole("button", { name: "Set" }).click();
-  await expect(page.getByRole("status")).toContainText(/Starting point set|demo starting point/);
+  await page.getByRole("button", { name: "Set", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: /Starting point set|demo starting point/ })).toContainText(/Starting point set|demo starting point/);
   await page.getByRole("button", { name: /Make my plan/ }).click();
   await expect(page.getByRole("heading", { name: "Here’s your way out the door." })).toBeVisible();
 }
@@ -128,8 +128,8 @@ test.describe("desktop editorial workspace", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
 
     await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
-    await page.getByRole("button", { name: "Set" }).click();
-    await expect(page.getByRole("status")).toContainText(/Starting point set|demo starting point/);
+    await page.getByRole("button", { name: "Set", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: /Starting point set|demo starting point/ })).toContainText(/Starting point set|demo starting point/);
     await callToAction.click();
     await expect(page.getByRole("heading", { name: "Here’s your way out the door." })).toBeVisible();
 

@@ -20,6 +20,8 @@ from .domain import (
     TravelLeg,
     WeatherContext,
 )
+from .editorial import activity_details, today_reason, weather_during, plan_copy
+from .time_math import add_minutes, elapsed_minutes, outing_deadline
 
 
 MOOD_LABELS = {
@@ -255,6 +257,15 @@ def candidate_score(
         + weather_fit(candidate, weather) * 0.04
         + diversity * 0.04
     )
+    if request.discovery_mode == "easy":
+        score += proximity * 0.08 + (0.08 if candidate.details and candidate.details.signature else 0)
+    else:
+        if candidate.id in request.seen_candidate_ids:
+            score -= 0.12
+        if candidate.id in request.visited_candidate_ids:
+            score -= 0.22
+        if request.discovery_mode == "surprise" and mood_matches:
+            score += 0.12 if candidate.category not in used_categories else -0.08
     return score * (CHAIN_SCORE_MULTIPLIER if is_chain_location(candidate) else 1.0)
 
 
@@ -279,6 +290,8 @@ def _group_fit(candidate: Candidate, group_size: int) -> float:
 def _candidate_is_possible(
     candidate: Candidate, request: ItineraryInput, weather: WeatherContext
 ) -> bool:
+    if candidate.id in request.excluded_candidate_ids:
+        return False
     distance = haversine_miles(request.coordinates, candidate.coordinates)
     if distance > request.radius_miles:
         return False
@@ -286,12 +299,14 @@ def _candidate_is_possible(
         return False
     if candidate.duration_minutes > request.available_minutes:
         return False
-    if weather.precipitation_probability >= 75 and candidate.indoor is False:
+    if not weather.periods and (weather.precipitation_probability >= 75 or weather.is_severe) and candidate.indoor is False:
         return False
-    window_end = request.start_at + timedelta(minutes=request.available_minutes)
-    if candidate.start_at and not (request.start_at <= candidate.start_at <= window_end):
+    window_end = outing_deadline(request.start_at, request.available_minutes)
+    if candidate.schedule_kind == "drop_in":
+        return (candidate.start_at is None or candidate.start_at.timestamp() < window_end.timestamp()) and (candidate.end_at is None or candidate.end_at.timestamp() > request.start_at.timestamp())
+    if candidate.start_at and not (request.start_at.timestamp() <= candidate.start_at.timestamp() <= window_end.timestamp()):
         return False
-    if candidate.end_at and candidate.end_at > window_end:
+    if candidate.end_at and candidate.end_at.timestamp() > window_end.timestamp():
         return False
     return True
 
@@ -301,30 +316,42 @@ def _known_open_during(opening_hours: str | None, start: datetime, end: datetime
         return True
     if opening_hours.strip() == "24/7":
         return True
-    day_code = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")[start.weekday()]
-    segments = opening_hours.split(";")
-    parsed_any = False
-    for segment in segments:
-        match = re.search(
-            r"(?:(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))?\s+)?"
-            r"(\d{2}:\d{2})-(\d{2}:\d{2})",
-            segment.strip(),
-        )
+    days = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
+    parsed = []
+    day_pattern = r"(?:Mo|Tu|We|Th|Fr|Sa|Su)"
+    selector = rf"{day_pattern}(?:-{day_pattern})?(?:,{day_pattern}(?:-{day_pattern})?)*"
+    for segment in opening_hours.split(";"):
+        match = re.fullmatch(rf"(?:(?P<days>{selector})\s+)?(?P<hours>off|closed|\d{{2}}:\d{{2}}-\d{{2}}:\d{{2}}(?:,\d{{2}}:\d{{2}}-\d{{2}}:\d{{2}})*)", segment.strip())
         if not match:
             continue
-        first_day, last_day, open_time, close_time = match.groups()
-        opened = _clock_on_date(start, open_time)
-        closed = _clock_on_date(start, close_time)
-        if opened is None or closed is None:
-            continue
-        parsed_any = True
-        if first_day and not _day_in_range(day_code, first_day, last_day or first_day):
-            continue
-        if closed <= opened:
-            closed += timedelta(days=1)
-        if opened <= start and end <= closed:
-            return True
-    return True if not parsed_any else False
+        selected_days = match.group('days')
+        selected = {d for d in days if not selected_days or any(
+            _day_in_range(d, span.split('-')[0], span.split('-')[-1]) for span in selected_days.split(','))}
+        hours = match.group('hours')
+        if hours not in {'off', 'closed'}:
+            windows = [window for window in hours.split(',') if all(_clock_on_date(start, clock) is not None for clock in window.split('-'))]
+            if not windows:
+                continue
+            hours = ','.join(windows)
+        parsed.append((selected, hours))
+    if not parsed:
+        return True  # Unsupported syntax stays explicitly unconfirmed in provider notes.
+    if any(days[start.weekday()] in selected and hours in {'off', 'closed'} for selected, hours in parsed):
+        return False
+    for reference in (start, start - timedelta(days=1)):
+        for selected, hours in parsed:
+            if days[reference.weekday()] not in selected or hours in {'off', 'closed'}:
+                continue
+            for window in hours.split(','):
+                open_time, close_time = window.split('-')
+                opened, closed = _clock_on_date(reference, open_time), _clock_on_date(reference, close_time)
+                if opened is None or closed is None:
+                    continue
+                if closed <= opened:
+                    closed += timedelta(days=1)
+                if opened.timestamp() <= start.timestamp() and end.timestamp() <= closed.timestamp():
+                    return True
+    return False
 
 
 def _clock_on_date(reference: datetime, clock: str) -> datetime | None:
@@ -371,20 +398,28 @@ def _extend_beam(
         return None
     distance = haversine_miles(beam.current_coordinates, candidate.coordinates)
     travel_minutes = estimate_travel_minutes(distance, request.transport_mode)
-    arrival = beam.current_time + timedelta(minutes=travel_minutes)
+    arrival = add_minutes(beam.current_time, travel_minutes)
     idle_minutes = 0
-    if candidate.start_at:
-        if arrival > candidate.start_at:
+    if candidate.schedule_kind == "drop_in":
+        activity_start = max(arrival, candidate.start_at, key=lambda value: value.timestamp()) if candidate.start_at else arrival
+        idle_minutes = elapsed_minutes(arrival, activity_start)
+    elif candidate.start_at:
+        if arrival.timestamp() > candidate.start_at.timestamp():
             return None
-        idle_minutes = int((candidate.start_at - arrival).total_seconds() / 60)
+        idle_minutes = elapsed_minutes(arrival, candidate.start_at)
         activity_start = candidate.start_at
     else:
         activity_start = arrival
-    activity_end = candidate.end_at or activity_start + timedelta(minutes=candidate.duration_minutes)
-    window_end = request.start_at + timedelta(minutes=request.available_minutes)
-    if activity_end <= activity_start or activity_end > window_end:
+    activity_end = (candidate.end_at if candidate.schedule_kind != "drop_in" else None) or add_minutes(activity_start, candidate.duration_minutes)
+    if candidate.end_at and activity_end.timestamp() > candidate.end_at.timestamp():
+        return None
+    window_end = outing_deadline(request.start_at, request.available_minutes)
+    if activity_end.timestamp() <= activity_start.timestamp() or activity_end.timestamp() > window_end.timestamp():
         return None
     if not _known_open_during(candidate.opening_hours, activity_start, activity_end):
+        return None
+    rain, severe = weather_during(weather, activity_start, activity_end)
+    if candidate.indoor is False and (rain >= 75 or severe):
         return None
     if beam.total_cost_high + candidate.cost_high > request.budget_max:
         return None
@@ -416,6 +451,11 @@ def _extend_beam(
         source_url=candidate.source_url,
         estimate_notes=candidate.estimate_notes,
         travel_before=leg,
+        details=activity_details(candidate),
+        why_today=today_reason(candidate, activity_start, activity_end, weather),
+        schedule_kind=candidate.schedule_kind if candidate.start_at else "opening_hours",
+        window_start_at=candidate.start_at,
+        window_end_at=candidate.end_at,
     )
     return _Beam(
         steps=beam.steps + (step,),
@@ -430,18 +470,10 @@ def _extend_beam(
 
 
 def _beam_to_plan(beam: _Beam, request: ItineraryInput, index: int) -> ItineraryPlan:
-    first_category = CATEGORY_LABELS.get(beam.steps[0].category, beam.steps[0].category.title())
-    last_category = CATEGORY_LABELS.get(beam.steps[-1].category, beam.steps[-1].category.title())
-    title = first_category if len(beam.steps) == 1 else f"{first_category} + {last_category}"
-    selected_moods = request.moods or (request.mood,)
-    subtitle = (
-        MOOD_LABELS.get(request.mood, "A plan for right now")
-        if len(selected_moods) == 1
-        else "A blend of " + ", ".join(mood.replace("-", " ") for mood in selected_moods)
-    )
+    title, introduction, character, prompt = plan_copy(beam.steps)
     confidence = sum(step.confidence for step in beam.steps) / len(beam.steps)
     confidence -= min(0.12, beam.idle_minutes / max(request.available_minutes, 1))
-    total_minutes = int((beam.current_time - request.start_at).total_seconds() / 60)
+    total_minutes = elapsed_minutes(request.start_at, beam.current_time)
     notes = {
         "Travel times are mode-aware estimates, not turn-by-turn routes.",
         "Costs are estimated per person.",
@@ -451,7 +483,7 @@ def _beam_to_plan(beam: _Beam, request: ItineraryInput, index: int) -> Itinerary
     return ItineraryPlan(
         id=f"plan-{index + 1}",
         title=title,
-        subtitle=subtitle,
+        subtitle=character,
         score=round(beam.score / len(beam.steps), 3),
         confidence=round(max(0.0, min(1.0, confidence)), 2),
         total_minutes=total_minutes,
@@ -459,6 +491,10 @@ def _beam_to_plan(beam: _Beam, request: ItineraryInput, index: int) -> Itinerary
         total_cost_high=round(beam.total_cost_high, 2),
         steps=beam.steps,
         estimate_notes=tuple(sorted(notes)),
+        introduction=introduction,
+        why_today=next((s.why_today for s in beam.steps if s.why_today), None),
+        prompt=prompt,
+        character=character,
     )
 
 
@@ -467,7 +503,7 @@ def _beam_rank(beam: _Beam, request: ItineraryInput) -> float:
         return 0.0
     active_minutes = sum(
         step.travel_before.minutes
-        + int((step.end_at - step.start_at).total_seconds() / 60)
+        + elapsed_minutes(step.start_at, step.end_at)
         for step in beam.steps
     )
     return (
@@ -531,6 +567,8 @@ def with_additional_options(
         route = [by_id[step.candidate_id] for step in plan.steps]
         options = []
         for index, step in enumerate(plan.steps):
+            if step.candidate_id in request.locked_candidate_ids or step.candidate_id == request.centerpiece_id:
+                continue
             ranked = []
             for candidate in unused:
                 replacement_route = [*route[:index], candidate, *route[index + 1 :]]
@@ -549,7 +587,7 @@ def with_additional_options(
                 )
                 ranked.append((_beam_rank(beam, request), candidate.id, option))
             ranked.sort(key=lambda item: (-item[0], item[1]))
-            options.extend(item[2] for item in ranked)
+            options.extend(item[2] for item in ranked[:6])
         updated.append(replace(plan, additional_options=tuple(options)))
     return tuple(updated)
 
@@ -589,6 +627,7 @@ def generate_itineraries(
     candidates: list[Candidate],
     weather: WeatherContext,
     warnings: tuple[str, ...] = (),
+    max_stops: int = 3,
 ) -> GenerationResult:
     rng = random.Random(request.regeneration_seed)
     feasible = list({item.id: item for item in candidates if _candidate_is_possible(item, request, weather)}.values())
@@ -598,6 +637,11 @@ def generate_itineraries(
         + rng.uniform(0, 0.035),
         reverse=True,
     )
+    required = set(request.locked_candidate_ids)
+    if request.centerpiece_id:
+        required.add(request.centerpiece_id)
+    if not required.issubset({c.id for c in feasible}):
+        raise ValueError("A kept stop or centerpiece no longer fits. Unlock it or choose another idea.")
     beams = [
         _Beam(
             steps=(),
@@ -610,7 +654,7 @@ def generate_itineraries(
         )
     ]
     completed: list[_Beam] = []
-    for _ in range(3):
+    for _ in range(max_stops):
         next_beams: list[_Beam] = []
         for beam in beams:
             used_ids = {step.candidate_id for step in beam.steps}
@@ -620,14 +664,22 @@ def generate_itineraries(
                 extended = _extend_beam(beam, candidate, request, weather)
                 if extended:
                     next_beams.append(extended)
-                    completed.append(extended)
+                    if required.issubset({s.candidate_id for s in extended.steps}):
+                        completed.append(extended)
         if not next_beams:
             break
         next_beams.sort(
             key=lambda beam: _beam_rank(beam, request),
             reverse=True,
         )
-        beams = next_beams[:48]
+        # Preserve paths toward required stops even when their early scores are lower.
+        groups: dict[frozenset[str], list[_Beam]] = {}
+        for beam in next_beams:
+            key = frozenset(s.candidate_id for s in beam.steps if s.candidate_id in required)
+            group = groups.setdefault(key, [])
+            if len(group) < 48:
+                group.append(beam)
+        beams = [b for group in groups.values() for b in group]
 
     completed.sort(
         key=lambda beam: _beam_rank(beam, request),
@@ -640,6 +692,10 @@ def generate_itineraries(
         selected.append(beam)
         if len(selected) == 3:
             break
+    if required and not selected:
+        raise ValueError("The kept stops cannot fit together. Unlock a stop or adjust your time and budget.")
+    if feasible and not any(c.id not in set(request.seen_candidate_ids) | set(request.visited_candidate_ids) for c in feasible):
+        warnings = (*warnings, "No fresh alternatives fit right now. These are the available familiar options.")
     plans = tuple(_beam_to_plan(beam, request, index) for index, beam in enumerate(selected))
     context = tuple(feasible)
     return GenerationResult(
