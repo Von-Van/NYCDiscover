@@ -431,7 +431,7 @@ export function DiscoveryApp() {
         <div className="masthead-rule">
           <span>VOL. 01</span>
           <span suppressHydrationWarning>{editionDate ? nycLongDate(`${editionDate}T12:00:00-04:00`) : "Today in New York"}</span>
-          <span>PLANS, NOT LISTS</span>
+          <span>Local Plans and Ideas, for Today</span>
         </div>
       </header>
 
@@ -448,6 +448,28 @@ export function DiscoveryApp() {
               A market morning. A small museum. A turn you haven’t taken.
               Find your own little piece of New York today.
             </p>
+            <div className="hero-discovery">
+              <p className="hero-discovery-label">Explore your way</p>
+              <div className="discovery-modes" role="group" aria-label="Discovery style">
+                {([
+                  ["easy", "Easy favorites"],
+                  ["new", "Something new"],
+                  ["surprise", "Surprise me"],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    type="button"
+                    key={mode}
+                    aria-pressed={session.mode === mode}
+                    onClick={() => {
+                      saveDiscoverySession({ mode });
+                      setEditionVersion((n) => n + 1);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <form className="planner-card" onSubmit={submit} noValidate>
@@ -482,7 +504,7 @@ export function DiscoveryApp() {
             </div>
           </form>
           </div>
-          <div className="discovery-controls"><div className="discovery-modes" aria-label="Discovery style">{([["easy", "Easy favorites"], ["new", "Something new"], ["surprise", "Surprise me"]] as const).map(([mode, label]) => <button type="button" key={mode} aria-pressed={session.mode === mode} onClick={() => { saveDiscoverySession({ mode }); setEditionVersion((n) => n + 1); }}>{label}</button>)}</div><button className="text-button" onClick={resetSession}>Reset this session</button></div>
+          <div className="front-page-tools"><button className="text-button" onClick={resetSession}>Reset this session</button></div>
           <TodayEdition key={editionVersion} form={draftForm} disabled={busy} onChoose={(id) => void runGeneration(draftForm, seed, "initial", id)} />
         </section>
       )}
@@ -770,7 +792,7 @@ export function DiscoveryApp() {
 
       <footer>
         <span>NYC DISCOVER</span>
-        <p>Recommend plans, not options.</p>
+        <p>Make a better plan, today.</p>
         <span><a href="/privacy">PRIVACY</a> · <a href="https://github.com/Von-Van/NYCDiscover/issues">GITHUB ISSUES</a></span>
       </footer>
     </main>

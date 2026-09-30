@@ -2068,6 +2068,39 @@ footer a {
 .discovery-modes { display: flex; flex-wrap: wrap; gap: 6px; }
 .discovery-modes button { border: 1px solid var(--ink); background: transparent; padding: 9px 15px; font-weight: 650; font-size: 0.85rem; }
 .discovery-modes button[aria-pressed="true"] { background: var(--ink); color: var(--paper-light); }
+.hero-discovery { max-width: 520px; margin-top: 28px; }
+.hero-discovery-label {
+  margin: 0 0 12px;
+  font-family: var(--condensed);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.hero-discovery .discovery-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border: 2px solid var(--ink);
+  background: var(--paper-light);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.hero-discovery .discovery-modes button {
+  min-width: 0;
+  min-height: 72px;
+  padding: 14px 8px;
+  border: 0;
+  border-right: 1px solid var(--ink);
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+.hero-discovery .discovery-modes button:last-child { border-right: 0; }
+.hero-discovery .discovery-modes button:not([aria-pressed="true"]):hover { background: var(--paper-dark); }
+.hero-discovery .discovery-modes button[aria-pressed="true"] { box-shadow: inset 0 -4px 0 var(--red); }
+.front-page-tools { display: flex; justify-content: flex-end; padding-bottom: 20px; }
 .today-edition { border-top: 4px solid var(--ink); padding-top: 23px; }
 .edition-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; }
 .edition-heading .eyebrow { margin-bottom: 8px; }

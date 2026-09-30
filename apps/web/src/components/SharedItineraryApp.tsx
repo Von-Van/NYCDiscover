@@ -261,13 +261,13 @@ function SharedMasthead() {
   return (
     <header className="masthead">
       <Link className="brand" href="/" aria-label="NYC Discover home"><span className="brand-box">NYC</span><span>DISCOVER</span></Link>
-      <div className="masthead-rule"><span>SHARED EDITION</span><span>PLANS, NOT LISTS</span></div>
+      <div className="masthead-rule"><span>SHARED EDITION</span><span>Local Plans and Ideas, for Today</span></div>
     </header>
   );
 }
 
 function SharedFooter() {
   return (
-    <footer><span>NYC DISCOVER</span><p>Recommend plans, not options.</p><Link href="/privacy">PRIVACY</Link></footer>
+    <footer><span>NYC DISCOVER</span><p>Make a better plan, today.</p><Link href="/privacy">PRIVACY</Link></footer>
   );
 }
