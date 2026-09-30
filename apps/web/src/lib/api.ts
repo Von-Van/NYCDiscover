@@ -9,6 +9,8 @@ import type {
   DiscoveryResponse,
   RemixRequest,
   RemixResponse,
+  Coordinates,
+  TodayEventsResponse,
 } from "./api-types";
 
 const API_URL =
@@ -61,6 +63,13 @@ export async function remixItinerary(request: RemixRequest): Promise<RemixRespon
   return parseResponse<RemixResponse>(await fetch(`${API_URL}/v1/itineraries/remix`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
     signal: AbortSignal.timeout(20_000),
+  }));
+}
+
+export async function getTodayEvents(coordinates: Coordinates, signal: AbortSignal): Promise<TodayEventsResponse> {
+  return parseResponse<TodayEventsResponse>(await fetch(`${API_URL}/v1/events/today`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coordinates }),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
   }));
 }
 

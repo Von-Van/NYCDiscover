@@ -204,7 +204,7 @@ def test_event_calendar_contract_uses_documented_query_and_items_payload(monkeyp
 
         assert captured["params"] == {
             "startDate": "08/19/2026 12:00 AM",
-            "endDate": "08/19/2026 10:00 PM",
+            "endDate": "08/20/2026 12:00 AM",
             "sort": "DATE",
         }
         assert captured["headers"] == {"Ocp-Apim-Subscription-Key": "test-key"}

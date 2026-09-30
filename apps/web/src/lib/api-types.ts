@@ -137,6 +137,15 @@ export interface CandidateData {
   final_day?: string | null;
 }
 
+export interface TodayEventsResponse {
+  date: string;
+  radius_miles: 5;
+  events: { event: CandidateData; distance_miles: number; status: "upcoming" | "started" | "ended" }[];
+  warnings: string[];
+  generated_at: string;
+  data_mode: "fixture" | "live";
+}
+
 export interface GenerationResponse {
   weather: {
     summary: string;

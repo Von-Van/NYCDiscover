@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/events/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Events Today */
+        post: operations["events_today_v1_events_today_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/itineraries/remix": {
         parameters: {
             query?: never;
@@ -674,6 +691,49 @@ export interface components {
             /** Window End At */
             window_end_at?: string | null;
         };
+        /** TodayEvent */
+        TodayEvent: {
+            event: components["schemas"]["CandidateResponse"];
+            /** Distance Miles */
+            distance_miles: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "upcoming" | "started" | "ended";
+        };
+        /** TodayEventsRequest */
+        TodayEventsRequest: {
+            coordinates: components["schemas"]["CoordinatesSchema"];
+        };
+        /** TodayEventsResponse */
+        TodayEventsResponse: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Radius Miles
+             * @default 5
+             * @constant
+             */
+            radius_miles: 5;
+            /** Events */
+            events: components["schemas"]["TodayEvent"][];
+            /** Warnings */
+            warnings: string[];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Data Mode
+             * @enum {string}
+             */
+            data_mode: "fixture" | "live";
+        };
         /** TodayReasonSchema */
         TodayReasonSchema: {
             /** Kind */
@@ -866,6 +926,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_today_v1_events_today_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodayEventsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayEventsResponse"];
                 };
             };
             /** @description Validation Error */

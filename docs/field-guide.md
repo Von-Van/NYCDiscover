@@ -28,11 +28,16 @@ Before advancing review dates, open each listed source and check description, ac
 ## API and timing
 
 - `POST /v1/discovery/today` takes the existing planning brief, including optional discovery/session fields, and returns cards with candidate IDs, descriptions, source links, price status, visit timing, schedule type, daily reasons, generated-at time, weather, warnings, and fixture/live mode.
+- `POST /v1/events/today` takes only `coordinates` and returns today's mapped NYC calendar listings within five miles. The list appears after Additional Options, independently of the plan's time, budget, mood, and radius. Known recurring events are excluded; unknown recurrence and prices stay labeled. Earlier events remain readable with an ended/started label. No browsing origin is added to shared snapshots.
 - `POST /v1/itineraries/generate` accepts optional `centerpiece_id`, `discovery_mode`, and seen/visited/excluded/locked candidate IDs. A missing or infeasible required stop yields a conflict explanation rather than silently replacing it.
 - `POST /v1/itineraries/remix` verifies the existing generation and brief with `swap_token`, then fetches fresh provider data. It returns the effective brief and newly signed generation. `completed_candidate_ids` must be a prefix of the selected plan. Completed public stop details stay fixed; completed allowances are deducted from the remaining budget. The effective brief retains the original outing deadline across subsequent replans.
 - Snapshot-only Additional Options retain their one-hour token lifetime. Fresh-data remix accepts a valid signature for up to 24 hours, requires the same New York date, enforces the original deadline, and issues fresh signatures. Unexpired older signatures and stored shares still validate with additive defaults.
 
 Dates use `America/New_York`, including visitors in other device timezones. Elapsed-minute arithmetic crosses daylight-saving transitions correctly. Same-day planning ends by New York midnight. Unknown opening hours remain unconfirmed; supported provider hours, explicit closures, event deadlines, budgets, radius, and weather remain constraints. Directions use public Google Maps URLs; map and travel estimates are not live routing.
+
+The NYC calendar is paginated. Browsing and generation read all available pages for the New York day, up to a 20-page safety cap, using the existing cache and throttle. A failed later page produces a partial-coverage warning; a failed initial request produces an unavailable state. Canceled and virtual listings are omitted. Mapping has a bounded address-lookup budget; neighborhood estimates are labeled and unmappable events are omitted with a coverage note. This city-sponsored feed is not an exhaustive NYC events directory.
+
+Run `npm run check:events` for a read-only live connection check. It uses the configured key, reports fetched/mapped/within-five-mile counts from a public Upper West Side reference point, and does not mutate the database or print credentials. On September 30, 2026, it fetched 91 listings over eight pages, mapped 27, and returned 13 within five miles; all 13 had unknown recurrence. Previously only the first 12 feed records were read.
 
 ## Privacy and operations
 
@@ -73,6 +78,16 @@ Verified Preview: https://nycdiscover-cugutuph3-von-vans-projects.vercel.app
 - Visual review confirmed two-card editions fill their row and provider stops receive activity suggestions without replacing source descriptions.
 
 Production has not been promoted. The participant evaluation below and staged production rollout remain outstanding.
+
+## Calendar and spacing verification — September 30, 2026
+
+Verified Preview: https://nycdiscover-d3d29rq2x-von-vans-projects.vercel.app
+
+- Front-page discoveries, plan prose, outing copy, and shared stop details use explicit paragraph spacing and readable line heights.
+- The calendar follows Additional Options. Desktop and mobile checks cover five-mile browsing outside the planning radius, unknown prices/recurrence, fixture labeling, and no horizontal overflow.
+- Lint, the production build, 37 web unit tests, and 123 API tests including PostgreSQL integration passed. The full browser suite passed 14 tests with six intentional skips; all four field-guide browser cases also passed after adding the calendar assertions.
+- The deployed health check reports live mode and PostgreSQL. `POST /api/v1/events/today` returned HTTP 200 in 1.9 seconds with 13 mapped listings within five miles of the Upper West Side reference point, all with unknown recurrence. The response includes approximate-location and omitted-unmapped-event warnings.
+- The read-only direct provider diagnostic retrieved all 91 listings across eight pages, confirming that pagination now reaches beyond the feed's first 12 items.
 
 ## First public evaluation
 

@@ -164,6 +164,9 @@ npm test
 # API tests; PostgreSQL cases skip unless TEST_DATABASE_URL is set
 npm run test:api
 
+# Read-only live NYC calendar check (loads the key from .env.local or .env)
+npm run check:events
+
 # Full API suite with local PostgreSQL
 TEST_DATABASE_URL=postgresql://nycdiscover:nycdiscover@127.0.0.1:5432/nycdiscover \
   npm run test:api

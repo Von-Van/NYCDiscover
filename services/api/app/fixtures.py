@@ -1,9 +1,29 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from dataclasses import replace
 
 from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext, PlaceDetails
+
+
+def fixture_today_events(now: datetime) -> list[Candidate]:
+    locations = [
+        ("Manhattan", "A neighborhood poetry reading", 40.787, -73.9754, 18),
+        ("Manhattan", "An afternoon drawing workshop", 40.75, -73.98, 14),
+        ("Brooklyn", "An evening of short films", 40.671, -73.9814, 19),
+        ("Queens", "A neighborhood music performance", 40.7644, -73.9235, 18),
+        ("The Bronx", "A gallery conversation", 40.861, -73.89, 17),
+        ("Staten Island", "An afternoon history talk", 40.6437, -74.0765, 14),
+    ]
+    return [Candidate(id=f"fixture-calendar-{index}", name=name, category="event", mood_tags=("cultural",),
+        coordinates=Coordinates(lat, lon), duration_minutes=60, cost_low=0, cost_high=25,
+        indoor=True, source_name="Fixture calendar", source_url=None, confidence=0.7,
+        start_at=now.replace(hour=hour, minute=0, second=0, microsecond=0),
+        end_at=now.replace(hour=hour+1, minute=0, second=0, microsecond=0),
+        recurrence="one_off" if index == 0 else "unknown",
+        details=PlaceDetails(description="A sample dated listing for trying the calendar. This is not a real scheduled event.",
+            neighborhood=borough, borough=borough, price_status="unknown"))
+        for index, (borough, name, lat, lon, hour) in enumerate(locations)]
 
 
 def fixture_weather(kind: str = "clear") -> WeatherContext:

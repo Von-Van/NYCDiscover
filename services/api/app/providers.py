@@ -17,7 +17,7 @@ from .cache import ProviderCache
 from .config import Settings
 from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext, WeatherPeriod, PlaceDetails
 from .curated import merge_curated
-from .fixtures import fixture_candidates, fixture_weather
+from .fixtures import fixture_candidates, fixture_weather, fixture_today_events
 from .limits import MemoryProviderThrottle, ProviderThrottle
 
 
@@ -45,6 +45,7 @@ CATEGORY_DEFAULTS: dict[str, tuple[int, float, float, bool | None, tuple[str, ..
 # addresses per request are worth the latency. Past the budget an event falls back
 # to its neighborhood centroid instead of being dropped.
 EVENT_GEOCODE_BUDGET = 6
+MAX_EVENT_PAGES = 20
 
 
 class ProviderClient:
@@ -321,24 +322,56 @@ class ProviderHub:
             warnings.append("OpenStreetMap places used an alternate public endpoint.")
         return candidates, tuple(warnings)
 
+    async def _calendar_events(self, start_at: datetime) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
+        """Read every page of the NYC day, shared by browsing and planning caches."""
+        start_at = start_at.astimezone(ZoneInfo("America/New_York")).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_at = start_at + timedelta(days=1)
+        event_date_format = "%m/%d/%Y %I:%M %p"
+        params = {"startDate": start_at.strftime(event_date_format), "endDate": end_at.strftime(event_date_format), "sort": "DATE"}
+        events: dict[tuple[str, str, str], dict[str, Any]] = {}
+        warnings: list[str] = []
+        for page in range(1, MAX_EVENT_PAGES + 1):
+            try:
+                payload, stale = await self.client.fetch_json(
+                    "nyc-events", self.settings.nyc_event_calendar_url,
+                    params={**params, **({"pageNumber": page} if page > 1 else {})},
+                    headers={"Ocp-Apim-Subscription-Key": self.settings.nyc_event_calendar_key},
+                    ttl_seconds=1800, stale_seconds=43200,
+                )
+                if not isinstance(payload, (dict, list)) or (isinstance(payload, dict) and not any(isinstance(payload.get(k), list) for k in ("items", "events", "results", "data"))):
+                    raise ValueError("Unexpected NYC calendar response")
+            except Exception:
+                if page == 1:
+                    raise
+                warnings.append("Some NYC calendar pages could not be loaded; this list may be incomplete.")
+                break
+            if stale:
+                warnings.append("NYC events were served from stale cache. Recheck the organizer's listing.")
+            items = _find_event_list(payload)
+            before = len(events)
+            for item in items:
+                key = (str(item.get("id") or item.get("guid") or item.get("name")), str(item.get("sequence", "")), str(item.get("startDate") or item.get("start")))
+                events[key] = item
+            pagination = payload.get("pagination", {}) if isinstance(payload, dict) else {}
+            pages = pagination.get("numPages", 1) if isinstance(pagination, dict) else 1
+            if not isinstance(pages, int) or page >= pages or pagination.get("isLastPage") is True:
+                break
+            if len(events) == before or page == MAX_EVENT_PAGES:
+                warnings.append("The NYC calendar returned a partial list; check the city calendar for more events.")
+                break
+        return list(events.values()), tuple(dict.fromkeys(warnings))
+
+    async def events(self, request: ItineraryInput) -> tuple[list[Candidate], tuple[str, ...]]:
+        if self.settings.fixture_mode:
+            return fixture_today_events(request.start_at), ()
+        if not self.settings.nyc_event_calendar_key:
+            raise RuntimeError("NYC calendar is not configured")
+        return await self._event_candidates(request)
+
     async def _event_candidates(
         self, request: ItineraryInput
     ) -> tuple[list[Candidate], tuple[str, ...]]:
-        end_at = request.start_at + timedelta(minutes=request.available_minutes)
-        event_date_format = "%m/%d/%Y %I:%M %p"
-        payload, stale = await self.client.fetch_json(
-            "nyc-events",
-            self.settings.nyc_event_calendar_url,
-            params={
-                "startDate": request.start_at.replace(hour=0, minute=0, second=0).strftime(event_date_format),
-                "endDate": end_at.strftime(event_date_format),
-                "sort": "DATE",
-            },
-            headers={"Ocp-Apim-Subscription-Key": self.settings.nyc_event_calendar_key},
-            ttl_seconds=1800,
-            stale_seconds=43200,
-        )
-        raw_events = _find_event_list(payload)
+        raw_events, calendar_warnings = await self._calendar_events(request.start_at)
         events: list[Candidate] = []
         geocoded: dict[str, Coordinates | None] = {}
         approximated_events = 0
@@ -347,7 +380,9 @@ class ProviderHub:
             start_at = _parse_datetime(raw.get("startDate") or raw.get("start") or raw.get("startDateTime"))
             end_at = _parse_datetime(raw.get("endDate") or raw.get("end") or raw.get("endDateTime"))
             name = raw.get("name") or raw.get("title")
-            if not name or not start_at or _event_is_canceled(raw):
+            if not name or not start_at or _event_is_canceled(raw) or _event_is_virtual(_event_address(raw), _event_venue(raw), name):
+                continue
+            if start_at.date() != request.start_at.astimezone(ZoneInfo("America/New_York")).date():
                 continue
             coordinates = _event_coordinates(raw)
             approximate_area: str | None = None
@@ -365,13 +400,16 @@ class ProviderHub:
                     "has no mappable address. Check the listing before travelling.",
                 )
             duration = int((end_at - start_at).total_seconds() / 60) if end_at else 75
-            description = html.unescape(re.sub(r'<[^>]*>', '', str(raw.get('shortDesc') or raw.get('description') or '')))[:500]
+            description = ' '.join(html.unescape(re.sub(r'<[^>]*>', ' ', str(raw.get('shortDesc') or raw.get('description') or raw.get('desc') or ''))).split())[:500]
             category = _event_category(raw)
             price_low, price_high, price_status = _event_price(raw, description)
             if price_status == 'unknown':
                 notes.append("Admission price is unknown; the budget includes an estimated allowance.")
             drop_in = raw.get('dropIn') is True or str(raw.get('attendanceMode', '')).lower() in {'drop-in', 'drop_in'}
             recurrence = 'recurring' if raw.get('recurring') is True else 'one_off' if raw.get('oneTimeOnly') is True else 'unknown'
+            boroughs = raw.get('boroughs') or []
+            if isinstance(boroughs, str):
+                boroughs = [boroughs]
             if drop_in:
                 duration = int(raw.get('visitDurationMinutes') or 45)
             events.append(
@@ -397,12 +435,12 @@ class ProviderHub:
                     final_day=end_at.date().isoformat() if raw.get('finalDay') is True and end_at else None,
                     details=PlaceDetails(description=description, activity=description[:240] or 'Attend the listed activity; check the organizer for details.', price_status=price_status,
                         registration='Registration required; check the organizer.' if raw.get('registrationRequired') is True else None,
-                        neighborhood=approximate_area or '', source_urls=tuple(filter(None, [raw.get('url') or raw.get('link') or raw.get('permalink')]))),
+                        neighborhood=approximate_area or _event_venue(raw) or _event_address(raw) or '',
+                        borough=', '.join({'Mn':'Manhattan','Bk':'Brooklyn','Qn':'Queens','Bx':'The Bronx','SI':'Staten Island'}.get(b, b) for b in boroughs if isinstance(b, str)),
+                        source_urls=tuple(filter(None, [raw.get('url') or raw.get('link') or raw.get('permalink')]))),
                 )
             )
-        warnings: list[str] = []
-        if stale:
-            warnings.append("NYC events were served from stale cache.")
+        warnings: list[str] = list(calendar_warnings)
         if approximated_events:
             warnings.append(
                 "Some events are placed at an approximate neighborhood location because the "
@@ -594,7 +632,7 @@ def _parse_datetime(value: Any) -> datetime | None:
 
 
 def _event_category(raw: dict[str, Any]) -> str:
-    value = str(raw.get('category') or raw.get('eventType') or '').lower()
+    value = str(raw.get('category') or raw.get('categories') or raw.get('eventType') or '').lower()
     for category, words in {'music': ('music', 'concert'), 'comedy': ('comedy',), 'trivia': ('trivia',),
                             'market': ('market',), 'gallery': ('exhibition', 'gallery'), 'park': ('nature walk',)}.items():
         if any(word in value for word in words):

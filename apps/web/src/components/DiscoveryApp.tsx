@@ -11,6 +11,7 @@ import { ItineraryMap } from "./ItineraryMap";
 import { AdditionalOptions } from "./AdditionalOptions";
 import { useNYCDate } from "@/lib/use-nyc-date";
 import { TodayEdition } from "./TodayEdition";
+import { TodayEvents } from "./TodayEvents";
 import { OutingView } from "./OutingView";
 import { getDiscoverySession, useDiscoverySession, saveDiscoverySession, resetDiscoverySession } from "@/lib/discovery-session";
 import { fieldguideEvent, priceLabel } from "@/lib/fieldguide";
@@ -687,7 +688,7 @@ export function DiscoveryApp() {
                                   </button>
                                 </h3>
                                 {step.details?.activity && <p className="stop-activity">{step.details.activity}</p>}
-                                <p>{priceLabel(step)}{step.details?.neighborhood ? ` · ${step.details.neighborhood}` : ""}</p>
+                                <p className="stop-meta">{priceLabel(step)}{step.details?.neighborhood ? ` · ${step.details.neighborhood}` : ""}</p>
                                 {step.why_today && <p className="today-reason">{step.why_today.text}</p>}
                                 {step.details?.registration && <p className="registration-note">{step.details.registration}</p>}
                                 <div className="stop-actions"><button type="button" disabled={busy || !response.swap_token} aria-pressed={session.locked.includes(step.candidate_id)} onClick={() => saveDiscoverySession({ locked: session.locked.includes(step.candidate_id) ? session.locked.filter((id) => id !== step.candidate_id) : [...session.locked, step.candidate_id] })}>{session.locked.includes(step.candidate_id) ? "Kept · unlock" : "Keep this stop"}</button><button type="button" aria-pressed={session.visited.includes(step.candidate_id)} onClick={() => saveDiscoverySession({ visited: [...session.visited, step.candidate_id] })}>{session.visited.includes(step.candidate_id) ? "Visited ✓" : "I’ve been here"}</button><button type="button" disabled={busy || !response.swap_token || session.completed.includes(step.candidate_id) || session.locked.includes(step.candidate_id)} onClick={() => void remixPlan(step.candidate_id)}>Show another idea</button></div>
@@ -714,6 +715,7 @@ export function DiscoveryApp() {
                           onSwap={swapOption}
                         />
                       )}
+                      {committedRequest && <TodayEvents coordinates={committedRequest.coordinates} />}
                       <div className="estimate-note">
                         <strong>Before you go</strong>
                         <ul>{activePlan.estimate_notes.map((note) => <li key={note}>{note}</li>)}</ul>

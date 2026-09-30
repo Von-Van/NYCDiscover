@@ -44,6 +44,9 @@ afterEach(() => {
 
 function createSuccessfulFetch() {
   return vi.fn((input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).includes("/v1/events/today")) {
+      return Promise.resolve(new Response(JSON.stringify({ date: "2026-09-30", events: [], warnings: [], radius_miles: 5, generated_at: new Date().toISOString(), data_mode: "fixture" }), { status: 200 }));
+    }
     if (String(input).includes("/v1/geocode")) {
       return Promise.resolve(
         new Response(
@@ -161,7 +164,8 @@ describe("DiscoveryApp", () => {
     expect(screen.getAllByText("What to verify").length).toBeGreaterThan(0);
     expect(screen.getByText("NOT TURN-BY-TURN")).toBeVisible();
     expect(screen.getByText("Fixture demonstration")).toBeVisible();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("/v1/events/today");
   });
 
   it("discards unsubmitted inspector edits and keeps result facts committed", async () => {

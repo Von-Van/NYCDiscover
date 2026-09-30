@@ -228,9 +228,9 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
                       <div className="stop-copy">
                         <span className="category-tag">{step.category}</span>
                         <h3><button type="button" onClick={() => selectTimelineStep(step.candidate_id)}>{step.name}</button></h3>
-                        {step.details?.activity && <p>{step.details.activity}</p>}
-                        <p>{priceLabel(step)}</p>
-                        {step.details?.registration && <p>{step.details.registration}</p>}
+                        {step.details?.activity && <p className="stop-activity">{step.details.activity}</p>}
+                        <p className="stop-meta">{priceLabel(step)}</p>
+                        {step.details?.registration && <p className="registration-note">{step.details.registration}</p>}
                         {step.why_today && <p className="today-reason">{step.why_today.text}</p>}
                         <details><summary>What to verify</summary><p>{confidenceLabel(step.confidence)}</p>{step.estimate_notes.map((note) => <p key={note}>{note}</p>)}{step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}</details>
                       </div>

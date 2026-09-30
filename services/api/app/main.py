@@ -16,6 +16,8 @@ from .cache import MemoryProviderCache, PostgresProviderCache
 from .config import settings
 from .database import Database
 from .engine import generate_itineraries
+from .events import event_browsing_input, today_events_response
+from .domain import Coordinates
 from .fieldguide import discovery_response, remix_inputs, remixed_response
 from .options import apply_generation_option, itinerary_input
 from .limits import (
@@ -41,6 +43,8 @@ from .schemas import (
     DiscoveryResponse,
     RemixRequest,
     RemixResponse,
+    TodayEventsRequest,
+    TodayEventsResponse,
 )
 from .sharing import PostgresShareStore, sign_snapshot, verify_generation, verify_snapshot
 
@@ -243,6 +247,18 @@ async def discover_today(payload: GenerateRequest, request: Request) -> Discover
         raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
     return await run_in_threadpool(discovery_response, brief, candidates, weather,
                                   tuple((*weather_warnings, *candidate_warnings)), settings.fixture_mode)
+
+
+@app.post("/v1/events/today", response_model=TodayEventsResponse)
+async def events_today(payload: TodayEventsRequest, request: Request) -> TodayEventsResponse:
+    await enforce_limit(request, "events-today", 20, 600)
+    now = datetime.now(ZoneInfo("America/New_York"))
+    origin = Coordinates(payload.coordinates.latitude, payload.coordinates.longitude)
+    try:
+        candidates, warnings = await request.app.state.providers.events(event_browsing_input(origin, now))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="The NYC events calendar is unavailable right now. Try again shortly.") from exc
+    return today_events_response(origin, now, candidates, warnings, settings.fixture_mode)
 
 
 @app.post("/v1/itineraries/remix", response_model=RemixResponse)

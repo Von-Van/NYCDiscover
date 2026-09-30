@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -217,6 +217,25 @@ class DiscoveryCard(BaseModel):
 class DiscoveryResponse(BaseModel):
     cards: list[DiscoveryCard]
     weather: WeatherResponse
+    warnings: list[str]
+    generated_at: datetime
+    data_mode: Literal["fixture", "live"]
+
+
+class TodayEventsRequest(BaseModel):
+    coordinates: CoordinatesSchema
+
+
+class TodayEvent(BaseModel):
+    event: CandidateResponse
+    distance_miles: float
+    status: Literal["upcoming", "started", "ended"]
+
+
+class TodayEventsResponse(BaseModel):
+    date: date
+    radius_miles: Literal[5] = 5
+    events: list[TodayEvent]
     warnings: list[str]
     generated_at: datetime
     data_mode: Literal["fixture", "live"]

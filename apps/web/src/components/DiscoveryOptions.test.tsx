@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyItineraryOption, createShare, generateItineraries, geocodeLocation, discoverToday, remixItinerary } from "@/lib/api";
+import { applyItineraryOption, createShare, generateItineraries, geocodeLocation, discoverToday, remixItinerary, getTodayEvents } from "@/lib/api";
 import { applyDemoOption, buildDemoResponse } from "@/lib/demo-data";
 import type { GenerationResponse, ItineraryPlan } from "@/lib/api-types";
 import { DiscoveryApp } from "./DiscoveryApp";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/api")>(), discoverToday: vi.fn(), remixItinerary: vi.fn(),
+  ...await importOriginal<typeof import("@/lib/api")>(), discoverToday: vi.fn(), remixItinerary: vi.fn(), getTodayEvents: vi.fn(),
   applyItineraryOption: vi.fn(), createShare: vi.fn(), generateItineraries: vi.fn(), geocodeLocation: vi.fn(),
 }));
 vi.mock("./ItineraryMap", () => ({
@@ -16,6 +16,7 @@ vi.mock("./ItineraryMap", () => ({
 }));
 
 beforeEach(() => {
+  vi.mocked(getTodayEvents).mockResolvedValue({ date: "2026-09-30", events: [], warnings: [], radius_miles: 5, generated_at: new Date().toISOString(), data_mode: "fixture" });
   vi.mocked(discoverToday).mockResolvedValue({ cards: [], weather: { summary: "Clear", temperature_f: 70, precipitation_probability: 0, is_wet: false, is_severe: false, source_name: "Fixture" }, warnings: [], generated_at: new Date().toISOString(), data_mode: "fixture" });
   vi.mocked(remixItinerary).mockImplementation(async ({ brief }) => ({ brief, generation: { ...buildDemoResponse(brief), swap_token: "options-remixed", snapshot_token: "share-remixed" } }));
   vi.mocked(geocodeLocation).mockResolvedValue({ results: [{ label: "Upper West Side", latitude: 40.787, longitude: -73.9754 }], warnings: [] });

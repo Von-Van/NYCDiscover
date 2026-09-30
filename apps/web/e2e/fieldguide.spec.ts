@@ -15,12 +15,28 @@ test("daily discovery, kept centerpiece, outing remix, and dated share", async (
   await page.screenshot({ path: testInfo.outputPath("daily-edition.png"), fullPage: true });
   const centerpiece = await free.locator("h3").innerText();
   const generationRequest = page.waitForRequest((request) => request.url().includes("/v1/itineraries/generate"));
+  const calendarResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/v1/events/today"));
   await free.getByRole("button", { name: /Build a plan around this/ }).focus();
   await page.keyboard.press("Enter");
   const brief = (await generationRequest).postDataJSON();
   expect(brief.centerpiece_id).toBeTruthy();
   await expect(page.locator(".timeline")).toContainText(centerpiece);
   await expect(page.getByRole("button", { name: "Kept · unlock" })).toHaveCount(1);
+  const calendar = await calendarResponse;
+  expect(calendar.status()).toBe(200);
+  expect(Object.keys(calendar.request().postDataJSON())).toEqual(["coordinates"]);
+  const events = page.getByRole("region", { name: "Also happening today" });
+  await expect(events).toHaveAttribute("aria-busy", "false");
+  await expect(events.getByText("Within 5 miles", { exact: true })).toBeVisible();
+  await expect(events.getByRole("button", { name: "Try the calendar again" })).toHaveCount(0);
+  if ((await events.innerText()).includes("Sample events · fixture data")) {
+    await expect(events).toContainText("Sample events · fixture data");
+    await expect(events).toContainText("2.6 mi"); // Outside the default two-mile planning radius.
+    await expect(events.getByText("Repeat schedule not provided").first()).toBeVisible();
+    await expect(events.getByText("Price not listed").first()).toBeVisible();
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  await events.screenshot({ path: testInfo.outputPath("today-events.png") });
   await page.getByRole("button", { name: "Regenerate", exact: true }).click();
   await expect(page.getByRole("button", { name: "Regenerate", exact: true })).toBeEnabled();
   await expect(page.locator(".timeline")).toContainText(centerpiece);
