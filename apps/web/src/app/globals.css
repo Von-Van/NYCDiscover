@@ -178,35 +178,6 @@ a:focus-visible {
   line-height: 1.35;
 }
 
-.hero-note {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 15px;
-  max-width: 28rem;
-  padding: 15px 0;
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-
-.hero-note p {
-  margin: 0;
-  font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.note-number {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--paper-light);
-  background: var(--blue);
-  font-family: var(--condensed);
-  font-weight: 900;
-}
-
 .planner-card,
 .timeline-card {
   position: relative;
@@ -1874,10 +1845,6 @@ footer a {
     margin-top: 30px;
   }
 
-  .hero-note {
-    display: none;
-  }
-
   .planner-card,
   .timeline-card {
     padding: 23px 18px;
@@ -2087,10 +2054,9 @@ footer a {
 [hidden] { display: none !important; }
 .daily-front-page { padding-bottom: 64px; }
 .edition-planner { padding: 36px 0 28px; gap: 48px; grid-template-columns: minmax(0, 1fr) minmax(440px, 0.95fr); }
-.edition-planner .hero-copy { position: static; padding-top: 16px; }
+.edition-planner .hero-copy { display: block; position: static; padding-top: 16px; }
 .edition-planner .hero-copy h1 { font-size: clamp(3.6rem, 7.5vw, 7.5rem); line-height: 0.92; letter-spacing: -0.065em; }
 .edition-planner .dek { max-width: 450px; font-size: 1.15rem; line-height: 1.6; }
-.edition-planner .hero-note { max-width: 390px; margin-top: 30px; }
 .borough-starts { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 20px 4px; }
 .borough-starts button { background: transparent; border: 1px solid var(--rule); border-radius: 0; padding: 6px 9px; font-size: 0.75rem; }
 .borough-starts button:hover { background: var(--ink); color: var(--paper-light); }
@@ -2164,7 +2130,6 @@ footer a {
   .edition-planner { grid-template-columns: 1fr; gap: 22px; padding-top: 24px; }
   .edition-planner .hero-copy { padding: 0; }
   .edition-planner .hero-copy h1 { font-size: 3.9rem; }
-  .edition-planner .hero-note { display: none; }
   .edition-planner .dek { font-size: 1rem; margin-bottom: 0; }
   .discovery-controls, .edition-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
   .discovery-modes { width: 100%; }
@@ -2223,6 +2188,36 @@ footer a {
   .outing-is-active .outing-now { margin-top: 16px; padding: 18px; }
   .outing-is-active .outing-view h2 { font-size: 1.6rem; }
 }
+/* The expanded brief needs space above each legend, not padding below it. */
+.edition-planner .brief-fields:not(.brief-fields-progressive) {
+  display: grid;
+  gap: 24px;
+  padding-bottom: 24px;
+}
+.edition-planner .brief-fields:not(.brief-fields-progressive) .form-section {
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: 0;
+}
+.edition-planner .brief-fields:not(.brief-fields-progressive) > .form-grid {
+  row-gap: 24px;
+  padding-top: 0;
+  border-top: 0;
+}
+.edition-planner .brief-fields:not(.brief-fields-progressive) legend {
+  margin-bottom: 12px;
+}
+.edition-planner .brief-fields:not(.brief-fields-progressive) .transport-row {
+  gap: 10px;
+}
+.edition-planner .brief-fields:not(.brief-fields-progressive) .field-hint {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.edition-planner .brief-fields:not(.brief-fields-progressive) .mood-grid {
+  gap: 10px;
+}
+
 .edition-planner .brief-fields-progressive { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; }
 .edition-planner .brief-fields-progressive > .location-section,
 .edition-planner .brief-fields-progressive > .error-box { grid-column: 1 / -1; }

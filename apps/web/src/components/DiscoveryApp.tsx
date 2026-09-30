@@ -448,13 +448,6 @@ export function DiscoveryApp() {
               A market morning. A small museum. A turn you haven’t taken.
               Find your own little piece of New York today.
             </p>
-            <div className="hero-note">
-              <span className="note-number">01</span>
-              <p>
-                Built for the gap after work, the free afternoon, and the group chat that has gone
-                nowhere.
-              </p>
-            </div>
           </div>
 
           <form className="planner-card" onSubmit={submit} noValidate>
