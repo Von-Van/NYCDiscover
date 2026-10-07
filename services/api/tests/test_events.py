@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
-import pytest
 
 from app.cache import MemoryProviderCache
 from app.config import Settings
@@ -12,8 +11,7 @@ from app.domain import Coordinates, PlaceDetails
 from app.events import event_browsing_input, today_events_response
 from app.main import app
 from app.providers import ProviderHub
-from test_options import candidate
-from test_options_api import client
+from helpers import candidate
 
 NYC = ZoneInfo('America/New_York')
 NOW = datetime(2026, 9, 30, 13, tzinfo=NYC)

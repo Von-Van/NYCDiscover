@@ -37,13 +37,13 @@ Dates use `America/New_York`, including visitors in other device timezones. Elap
 
 The NYC calendar is paginated. Browsing and generation read all available pages for the New York day, up to a 20-page safety cap, using the existing cache and throttle. A failed later page produces a partial-coverage warning; a failed initial request produces an unavailable state. Canceled and virtual listings are omitted. Mapping has a bounded address-lookup budget; neighborhood estimates are labeled and unmappable events are omitted with a coverage note. This city-sponsored feed is not an exhaustive NYC events directory.
 
-Run `npm run check:events` for a read-only live connection check. It uses the configured key, reports fetched/mapped/within-five-mile counts from a public Upper West Side reference point, and does not mutate the database or print credentials. On September 30, 2026, it fetched 91 listings over eight pages, mapped 27, and returned 13 within five miles; all 13 had unknown recurrence. Previously only the first 12 feed records were read.
+Run `npm run check:events` for a read-only live connection check. It uses the configured key, reports fetched/mapped/within-five-mile counts from a public Upper West Side reference point, and does not mutate the database or print credentials.
 
 ## Privacy and operations
 
 SessionStorage holds the current tab's mode, seen/visited/dismissed places, kept stops, and outing progress. Memory is the fallback. The session resets with the New York date or the reset control. Shared generations omit session feedback, completion state, candidate pools, signatures, private discovery controls, and origin labels/coordinates. The existing public shared brief remains compatible with older clients. Editorial copy uses public stop facts.
 
-Aggregate analytics send only fixed event names for discovery selection, generation success, outing starts, and voluntary feedback. They carry no locations, candidate IDs, or session history. No database tables, accounts, paid feeds, calendar integrations, or runtime AI were added. Existing PostgreSQL caching, throttling, rate limits, and seven-day share storage are reused.
+Aggregate analytics send only fixed event names for discovery selection, generation success, outing starts, and voluntary feedback. They carry no locations, candidate IDs, or session history. The field guide needs no extra database tables, accounts, paid feeds, calendar integrations, or runtime AI. It uses the same PostgreSQL caching, throttling, rate limits, and seven-day share storage as the planner.
 
 ## Preview and production
 
@@ -64,30 +64,6 @@ PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npm run test:e2e
 ```
 
 Browser coverage runs desktop and Pixel 7 layouts, keyboard selection, reduced motion, session restoration, blocked storage, the outing flow, and sharing. Existing hosted-only smoke checks require `PLAYWRIGHT_SHARED_PATH`; they are intentionally skipped otherwise. Live provider availability is variable, so Preview also needs a live-mode smoke check and source review before production.
-
-## Preview verification — September 23, 2026
-
-Verified Preview: https://nycdiscover-cugutuph3-von-vans-projects.vercel.app
-
-- Health endpoint reports live mode, PostgreSQL, and sharing enabled.
-- All 30 curated places validate across the five boroughs.
-- Lint and the production build pass.
-- Web unit tests: 34 passed. API tests with a disposable PostgreSQL database: 117 passed.
-- Full local browser suite: 14 passed, six intentional skips for desktop-only or externally supplied shared-page cases.
-- Final live Preview: four desktop/mobile checks passed, covering discovery, kept centerpieces, regeneration, outing completion and replacement, session restore, dated sharing, and unavailable browser storage. The browser timezone was Asia/Tokyo and reduced motion was enabled for the outing flow.
-- Visual review confirmed two-card editions fill their row and provider stops receive activity suggestions without replacing source descriptions.
-
-Production has not been promoted. The participant evaluation below and staged production rollout remain outstanding.
-
-## Calendar and spacing verification — September 30, 2026
-
-Verified Preview: https://nycdiscover-d3d29rq2x-von-vans-projects.vercel.app
-
-- Front-page discoveries, plan prose, outing copy, and shared stop details use explicit paragraph spacing and readable line heights.
-- The calendar follows Additional Options. Desktop and mobile checks cover five-mile browsing outside the planning radius, unknown prices/recurrence, fixture labeling, and no horizontal overflow.
-- Lint, the production build, 37 web unit tests, and 123 API tests including PostgreSQL integration passed. The full browser suite passed 14 tests with six intentional skips; all four field-guide browser cases also passed after adding the calendar assertions.
-- The deployed health check reports live mode and PostgreSQL. `POST /api/v1/events/today` returned HTTP 200 in 1.9 seconds with 13 mapped listings within five miles of the Upper West Side reference point, all with unknown recurrence. The response includes approximate-location and omitted-unmapped-event warnings.
-- The read-only direct provider diagnostic retrieved all 91 listings across eight pages, confirming that pagination now reaches beyond the feed's first 12 items.
 
 ## First public evaluation
 

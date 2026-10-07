@@ -87,7 +87,7 @@ function milesBetween(left: Coordinates, right: Coordinates) {
 // This small scheduler is only for the offline sample catalog (which has no
 // opening-hour rules). Live and API fixture swaps always use the Python engine.
 function scheduleDemoPlan(request: GenerateRequest, plan: ItineraryPlan, route: CandidateData[]): ItineraryPlan | null {
-  const selectedMoods = new Set(request.moods.length ? request.moods : [request.mood]);
+  const selectedMoods = new Set(request.moods?.length ? request.moods : [request.mood]);
   if (!(selectedMoods.size === 1 && selectedMoods.has("food-focused")) && route.filter((candidate) => foodDrink.has(candidate.category)).length > 1) return null;
   if (new Set(route.map((candidate) => candidate.id)).size !== route.length) return null;
   let current = new Date(request.start_at).getTime();

@@ -1,46 +1,17 @@
 from dataclasses import replace
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 import pytest
 
-from app.domain import Candidate, Coordinates, ItineraryInput
+from app.domain import Coordinates
 from app.engine import (
     FOOD_DRINK_CATEGORIES,
-    _beam_to_plan,
-    _rebuild_route,
     apply_option,
     generate_itineraries,
     with_additional_options,
 )
 from app.fixtures import fixture_weather
-
-
-def brief(**overrides):
-    values = dict(
-        location_label="Upper West Side",
-        coordinates=Coordinates(40.787, -73.9754),
-        start_at=datetime(2026, 9, 5, 15, 0, tzinfo=ZoneInfo("America/New_York")),
-        available_minutes=180, budget_min=0, budget_max=40, group_size=2,
-        transport_mode="walk", radius_miles=2, mood="social", moods=("social",),
-    )
-    return ItineraryInput(**{**values, **overrides})
-
-
-def candidate(id, category="gallery", **overrides):
-    values = dict(
-        id=id, name=id.title(), category=category, mood_tags=("social", "food-focused"),
-        coordinates=Coordinates(40.7871, -73.9755), duration_minutes=20,
-        cost_low=0, cost_high=0, indoor=True, source_name="Test", source_url=None,
-        confidence=0.9,
-    )
-    return Candidate(**{**values, **overrides})
-
-
-def plan(request, candidates, index=0):
-    beam = _rebuild_route(request, candidates, fixture_weather())
-    assert beam is not None
-    return _beam_to_plan(beam, request, index)
+from helpers import brief, candidate, plan
 
 
 @pytest.mark.parametrize("moods", [("social",), ("food-focused", "social"), ("cultural", "food-focused")])

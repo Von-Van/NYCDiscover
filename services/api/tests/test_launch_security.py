@@ -2,94 +2,9 @@ import asyncio
 import json
 from app.config import Settings
 from app.limits import MemoryRateLimiter, anonymized_client_key
-from app.schemas import CreateShareRequest, GenerateRequest, GenerationResponse
-from app.sharing import redact_share, sign_snapshot, verify_snapshot
-
-
-def brief() -> GenerateRequest:
-    return GenerateRequest.model_validate(
-        {
-            "location_label": "123 Secret Street, Brooklyn",
-            "coordinates": {"latitude": 40.6895, "longitude": -73.9857},
-            "start_at": "2026-08-19T18:00:00-04:00",
-            "available_minutes": 180,
-            "budget_min": 10,
-            "budget_max": 60,
-            "group_size": 2,
-            "transport_mode": "walk",
-            "radius_miles": 2,
-            "mood": "cultural",
-            "regeneration_seed": 42,
-        }
-    )
-
-
-def generation() -> GenerationResponse:
-    return GenerationResponse.model_validate(
-        {
-            "weather": {
-                "summary": "Clear",
-                "temperature_f": 72,
-                "precipitation_probability": 5,
-                "is_wet": False,
-                "is_severe": False,
-                "source_name": "NWS",
-            },
-            "plans": [
-                {
-                    "id": "plan-1",
-                    "title": "Gallery and dinner",
-                    "subtitle": "An easy evening",
-                    "score": 0.9,
-                    "confidence": 0.8,
-                    "total_minutes": 150,
-                    "total_cost_low": 20,
-                    "total_cost_high": 50,
-                    "steps": [
-                        {
-                            "candidate_id": "gallery-1",
-                            "name": "Example Gallery",
-                            "category": "gallery",
-                            "start_at": "2026-08-19T18:15:00-04:00",
-                            "end_at": "2026-08-19T19:00:00-04:00",
-                            "coordinates": {"latitude": 40.69, "longitude": -73.986},
-                            "cost_low": 0,
-                            "cost_high": 10,
-                            "confidence": 0.8,
-                            "source_name": "OpenStreetMap",
-                            "source_url": None,
-                            "estimate_notes": ["Verify hours."],
-                            "travel_before": {
-                                "mode": "walk",
-                                "minutes": 15,
-                                "distance_miles": 0.7,
-                                "from_label": "123 Secret Street, Brooklyn",
-                                "to_label": "Example Gallery",
-                                "estimate_note": "Estimated.",
-                            },
-                        }
-                    ],
-                    "estimate_notes": ["Verify before leaving."],
-                }
-            ],
-            "warnings": [],
-            "generated_at": "2026-08-19T17:55:00-04:00",
-            "data_mode": "live",
-            "snapshot_token": None,
-        }
-    )
-
-
-def share_request(issued_at: int = 2_000_000_000) -> CreateShareRequest:
-    request_brief = brief()
-    result = generation()
-    token = sign_snapshot(request_brief, result, "test-secret", issued_at=issued_at)
-    return CreateShareRequest(
-        brief=request_brief,
-        generation=result,
-        snapshot_token=token,
-        selected_plan_id="plan-1",
-    )
+from app.schemas import GenerateRequest
+from app.sharing import redact_share, verify_snapshot
+from helpers import generate_request, share_request
 
 
 def test_snapshot_signature_accepts_exact_response_and_rejects_tampering(monkeypatch):
@@ -166,7 +81,7 @@ def test_live_settings_require_shared_state_and_contactable_identity():
 
 
 def test_generate_request_normalizes_legacy_and_multiple_moods():
-    legacy = brief()
+    legacy = generate_request()
     multiple = GenerateRequest.model_validate(
         {**legacy.model_dump(), "mood": "social", "moods": ["social", "cultural"]}
     )

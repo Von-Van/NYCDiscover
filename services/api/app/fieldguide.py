@@ -3,9 +3,9 @@ from dataclasses import asdict, replace
 from datetime import datetime
 
 from .domain import Candidate, ItineraryInput, WeatherContext
-from .engine import _candidate_is_possible, _empty_beam, _extend_beam, candidate_score, generate_itineraries, FOOD_DRINK_CATEGORIES, allows_multiple_food_stops
+from .engine import candidate_is_possible, empty_beam, extend_beam, candidate_score, generate_itineraries, FOOD_DRINK_CATEGORIES, allows_multiple_food_stops
 from .editorial import plan_copy
-from .options import itinerary_input, _step
+from .options import domain_step, itinerary_input
 from .time_math import add_minutes, elapsed_minutes, outing_deadline
 from .schemas import DiscoveryCard, DiscoveryResponse, GenerationResponse, RemixRequest, RemixResponse
 
@@ -14,9 +14,9 @@ def discovery_response(brief: ItineraryInput, candidates: list[Candidate], weath
                        warnings: tuple[str, ...], fixture: bool) -> DiscoveryResponse:
     possible = []
     for candidate in candidates:
-        if not _candidate_is_possible(candidate, brief, weather):
+        if not candidate_is_possible(candidate, brief, weather):
             continue
-        beam = _extend_beam(_empty_beam(brief), candidate, brief, weather)
+        beam = extend_beam(empty_beam(brief), candidate, brief, weather)
         if beam:
             possible.append((candidate, beam.steps[0]))
     possible.sort(key=lambda pair: (-candidate_score(pair[0], brief, weather), pair[0].id))
@@ -105,7 +105,8 @@ def remixed_response(payload: RemixRequest, effective, request, prefix, candidat
             plan.total_cost_high += sum(s.cost_high for s in prefix)
             plan.total_minutes = elapsed_minutes(itinerary_input(effective).start_at, plan.steps[-1].end_at)
             plan.additional_options = []
-            title, introduction, character, prompt = plan_copy(tuple(_step(step) for step in plan.steps))
-            plan.title, plan.introduction, plan.character, plan.prompt = title, introduction, character, prompt
+            title, introduction, character, prompt = plan_copy(tuple(domain_step(step) for step in plan.steps))
+            plan.title, plan.introduction, plan.prompt = title, introduction, prompt
+            plan.subtitle = plan.character = character
             plan.why_today = next((step.why_today for step in plan.steps if step.why_today), None)
     return RemixResponse(brief=effective, generation=response)

@@ -20,9 +20,8 @@ The daily edition adds reviewed knowledge for 30 places across all five boroughs
 
 - `main` owns the desktop web app and shared FastAPI service.
 - `ios` owns the native SwiftUI app used for iPhone simulator and device testing.
-- Launch work is staged on `codex/launch-v1` before an exact tested commit reaches `main`.
 
-The additive API fields remain compatible with the untouched iOS branch.
+API changes are additive so the iOS branch keeps working against `main`.
 
 ## How It Works
 
@@ -202,4 +201,14 @@ The fixture bootstrap remains the immediate rollback target.
 
 ## Product Boundaries
 
-Version one is guest-only, NYC-only, and current-day-only. It has no accounts, saved-plan dashboard, payments, route geometry, custom domain, or native-app launch. Costs and travel times are estimates; opening hours and availability should be verified before leaving.
+Version one is guest-only, NYC-only, and current-day-only. It has no accounts, saved-plan dashboard, payments, route geometry, custom domain, or native-app launch.
+
+## Known Limitations
+
+- **Travel times are not routing.** Legs use straight-line distance with a per-mode speed and buffer. A transit trip that needs a transfer can take much longer than the estimate.
+- **Prices and hours are often unknown.** OpenStreetMap places rarely list prices, so most costs are category estimates. Opening hours are enforced only when the provider gives a format the parser understands. Anything else is still allowed, labeled as unconfirmed.
+- **The events feed is partial.** The NYC Event Calendar is city-sponsored, not a full events directory. Address lookups are capped per request. Past the cap, events get a labeled neighborhood estimate, and events that can't be placed at all are dropped with a coverage note.
+- **Curated places expire.** The 30 reviewed places drop out of results once their review dates lapse (30 days for prices and hours, 90 for descriptions). Someone has to re-check the sources and bump the dates, or the daily edition shrinks to provider data only.
+- **Free providers set the pace.** Nominatim and Overpass are public services with strict rate limits. Provider calls are serialized through PostgreSQL, so a cold cache under load returns "busy" errors instead of queueing for long.
+- **The offline demo has its own scheduler.** When the API is unreachable in local development, the browser builds sample plans in `apps/web/src/lib/demo-data.ts`. Its swap logic is a simplified copy of the Python engine and is not used when `NEXT_PUBLIC_DEMO_FALLBACK=false`, which hosted environments require.
+- **Hosting depends on a beta.** Vercel Services is in beta. Docker Compose is the fallback if it becomes unavailable.

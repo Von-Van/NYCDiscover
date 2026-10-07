@@ -1,5 +1,8 @@
 """Elapsed time arithmetic across New York's daylight-saving transitions."""
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+NYC = ZoneInfo("America/New_York")
 
 
 def add_minutes(value: datetime, minutes: float) -> datetime:

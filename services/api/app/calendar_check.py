@@ -4,19 +4,19 @@ import json
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from .cache import MemoryProviderCache
 from .config import settings
 from .domain import Coordinates
 from .events import event_browsing_input, today_events_response
 from .providers import ProviderHub
+from .time_math import NYC
 
 
 async def check():
     if not settings.nyc_event_calendar_key:
         raise SystemExit('NYC_EVENT_CALENDAR_KEY is not configured. Set it in the environment or .env.local.')
-    now = datetime.now(ZoneInfo('America/New_York'))
+    now = datetime.now(NYC)
     origin = Coordinates(40.787, -73.9754)  # A public Upper West Side reference point.
     hub = ProviderHub(replace(settings, fixture_mode=False), MemoryProviderCache())
     raw, warnings = await hub._calendar_events(now)

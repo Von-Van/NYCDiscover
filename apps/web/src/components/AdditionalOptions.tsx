@@ -1,16 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { durationLabel } from "@/lib/fieldguide";
 import { nycTime } from "@/lib/nyc-time";
 import type { AdditionalOption, ItineraryPlan } from "@/lib/api-types";
-
-function time(value: string) {
-  return nycTime(value);
-}
-
-function duration(minutes: number) {
-  return `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)}h ` : ""}${minutes % 60 ? `${minutes % 60}m` : ""}`.trim();
-}
 
 interface AdditionalOptionsProps {
   plan: ItineraryPlan;
@@ -66,14 +59,14 @@ export function AdditionalOptions({ plan, disabled, pendingOptionId, status, err
                       <div className="option-copy">
                         <span className="category-tag">{option.step.category}</span>
                         <h5>{option.step.name}</h5>
-                        <p>{time(option.step.start_at)}–{time(option.step.end_at)} · ${option.step.cost_low}–${option.step.cost_high}</p>
+                        <p>{nycTime(option.step.start_at)}–{nycTime(option.step.end_at)} · ${option.step.cost_low}–${option.step.cost_high}</p>
                         <p className="option-confidence">{Math.round(option.step.confidence * 100)}% confidence · {option.step.source_name}</p>
                         <details>
                           <summary>What to verify</summary>
                           {option.step.estimate_notes.map((note) => <p key={note}>{note}</p>)}
                           {option.step.source_url && <a href={option.step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}
                         </details>
-                        <p className="option-total">Updated plan: {duration(option.total_minutes)} · ${option.total_cost_low}–${option.total_cost_high} · {Math.round(option.confidence * 100)}% confidence</p>
+                        <p className="option-total">Updated plan: {durationLabel(option.total_minutes)} · ${option.total_cost_low}–${option.total_cost_high} · {Math.round(option.confidence * 100)}% confidence</p>
                       </div>
                       <button
                         className="option-swap"

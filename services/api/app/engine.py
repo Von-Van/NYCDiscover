@@ -4,11 +4,10 @@ import hashlib
 import json
 import math
 import random
-import re
-import unicodedata
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from .chains import is_chain_location
 from .domain import (
     AdditionalOption,
     Candidate,
@@ -21,35 +20,9 @@ from .domain import (
     WeatherContext,
 )
 from .editorial import activity_details, today_reason, weather_during, plan_copy
+from .opening_hours import known_open_during
 from .time_math import add_minutes, elapsed_minutes, outing_deadline
 
-
-MOOD_LABELS = {
-    "social": "Easy company",
-    "relaxing": "A softer pace",
-    "outdoors": "Fresh-air wandering",
-    "date-night": "A good little date",
-    "productive": "A useful reset",
-    "chaotic": "A little plot twist",
-    "low-energy": "Low lift, still worth leaving",
-    "cultural": "A cultured detour",
-    "food-focused": "Built around a good bite",
-}
-
-CATEGORY_LABELS = {
-    "restaurant": "Food",
-    "dessert": "Dessert",
-    "cafe": "Cafe",
-    "trivia": "Trivia",
-    "comedy": "Comedy",
-    "music": "Music",
-    "museum": "Museum",
-    "park": "Park",
-    "library": "Library",
-    "bookstore": "Bookstore",
-    "gallery": "Gallery",
-    "landmark": "Landmark",
-}
 
 # Categories that are a happening rather than a place you can walk into any day.
 LIVE_CATEGORIES = frozenset({"event", "comedy", "music", "trivia"})
@@ -70,82 +43,6 @@ MULTI_DAY_TIMELINESS = 0.70
 # The multiplier demotes them rather than removing them, so a chain still
 # surfaces when it is genuinely the only thing that fits the brief.
 CHAIN_SCORE_MULTIPLIER = 0.65
-
-# Curated major chains only: having a brand tag does not establish a national
-# footprint. Unknown brands and NYC/NJ regional businesses keep their normal
-# scores. For example Dallas BBQ remains local (dallasbbq.com/reservations),
-# whereas Dave's spans many states (store.daveshotchicken.com/location/).
-# Normalize punctuation/accents and match whole words for unbranded locations.
-CHAIN_NAMES = frozenset(
-    {
-        # Coffee and bakery
-        "starbucks",
-        "dunkin",
-        "pret a manger",
-        "le pain quotidien",
-        "gregorys coffee",
-        "blue bottle coffee",
-        "bluestone lane",
-        "joe and the juice",
-        "peets coffee",
-        "tim hortons",
-        "au bon pain",
-        "panera bread",
-        "krispy kreme",
-        "cinnabon",
-        "insomnia cookies",
-        "crumbl",
-        # Fast and fast-casual
-        "mcdonalds",
-        "burger king",
-        "wendys",
-        "chipotle",
-        "sweetgreen",
-        "chopt",
-        "just salad",
-        "chick fil a",
-        "daves hot chicken",
-        "popeyes",
-        "taco bell",
-        "five guys",
-        "shake shack",
-        "wingstop",
-        "panda express",
-        "sbarro",
-        "potbelly",
-        "jersey mikes",
-        "white castle",
-        "halal guys",
-        "dominos",
-        "papa johns",
-        "pizza hut",
-        # Sit-down chains
-        "applebees",
-        "tgi fridays",
-        "olive garden",
-        "red lobster",
-        "cheesecake factory",
-        "buffalo wild wings",
-        "hooters",
-        "ihop",
-        "dennys",
-        "outback steakhouse",
-        "hard rock cafe",
-        "planet hollywood",
-        "bubba gump",
-        # Dessert
-        "baskin robbins",
-        "cold stone creamery",
-        "haagen dazs",
-        "16 handles",
-        # Retail
-        "barnes and noble",
-        "books a million",
-    }
-)
-# Short ambiguous names require an explicit brand match, not a name substring:
-# a Subway sandwich franchise counts; the unrelated local Subway Inn does not.
-CHAIN_BRANDS = CHAIN_NAMES | {"subway"}
 
 
 def haversine_miles(a: Coordinates, b: Coordinates) -> float:
@@ -180,7 +77,7 @@ def weather_fit(candidate: Candidate, weather: WeatherContext) -> float:
     return 0.75
 
 
-def timeliness_fit(candidate: Candidate, request: ItineraryInput) -> float:
+def timeliness_fit(candidate: Candidate) -> float:
     """Rank things happening at a fixed time above places that are open any day."""
     if candidate.start_at is None:
         return (
@@ -194,31 +91,6 @@ def timeliness_fit(candidate: Candidate, request: ItineraryInput) -> float:
     run_hours = (finish - candidate.start_at).total_seconds() / 3600
     # A run longer than a day is a standing exhibition, not a one-off happening.
     return 1.0 if run_hours <= 24 else MULTI_DAY_TIMELINESS
-
-
-def _normalize_place_name(name: str) -> str:
-    normalized = name.lower().replace("&", " and ").replace("'", "").replace("’", "")
-    decomposed = unicodedata.normalize("NFKD", normalized)
-    unaccented = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    )
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", unaccented).split())
-
-
-def is_chain_location(candidate: Candidate) -> bool:
-    """Known major chain; local and unclassified brands are not penalized."""
-    if candidate.brand:
-        return any(_normalize_place_name(brand) in CHAIN_BRANDS for brand in candidate.brand.split(";"))
-    words = _normalize_place_name(candidate.name).split()
-    for chain in CHAIN_NAMES:
-        chain_words = chain.split()
-        span = len(chain_words)
-        if any(
-            words[index : index + span] == chain_words
-            for index in range(len(words) - span + 1)
-        ):
-            return True
-    return False
 
 
 def is_live_happening(candidate: Candidate) -> bool:
@@ -250,7 +122,7 @@ def candidate_score(
     )
     score = (
         mood * 0.26
-        + timeliness_fit(candidate, request) * 0.18
+        + timeliness_fit(candidate) * 0.18
         + time_efficiency * 0.20
         + proximity * 0.16
         + budget * 0.12
@@ -287,7 +159,7 @@ def _group_fit(candidate: Candidate, group_size: int) -> float:
     return 1.0 if candidate.category in group_friendly else 0.55
 
 
-def _candidate_is_possible(
+def candidate_is_possible(
     candidate: Candidate, request: ItineraryInput, weather: WeatherContext
 ) -> bool:
     if candidate.id in request.excluded_candidate_ids:
@@ -311,67 +183,6 @@ def _candidate_is_possible(
     return True
 
 
-def _known_open_during(opening_hours: str | None, start: datetime, end: datetime) -> bool:
-    if not opening_hours:
-        return True
-    if opening_hours.strip() == "24/7":
-        return True
-    days = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
-    parsed = []
-    day_pattern = r"(?:Mo|Tu|We|Th|Fr|Sa|Su)"
-    selector = rf"{day_pattern}(?:-{day_pattern})?(?:,{day_pattern}(?:-{day_pattern})?)*"
-    for segment in opening_hours.split(";"):
-        match = re.fullmatch(rf"(?:(?P<days>{selector})\s+)?(?P<hours>off|closed|\d{{2}}:\d{{2}}-\d{{2}}:\d{{2}}(?:,\d{{2}}:\d{{2}}-\d{{2}}:\d{{2}})*)", segment.strip())
-        if not match:
-            continue
-        selected_days = match.group('days')
-        selected = {d for d in days if not selected_days or any(
-            _day_in_range(d, span.split('-')[0], span.split('-')[-1]) for span in selected_days.split(','))}
-        hours = match.group('hours')
-        if hours not in {'off', 'closed'}:
-            windows = [window for window in hours.split(',') if all(_clock_on_date(start, clock) is not None for clock in window.split('-'))]
-            if not windows:
-                continue
-            hours = ','.join(windows)
-        parsed.append((selected, hours))
-    if not parsed:
-        return True  # Unsupported syntax stays explicitly unconfirmed in provider notes.
-    if any(days[start.weekday()] in selected and hours in {'off', 'closed'} for selected, hours in parsed):
-        return False
-    for reference in (start, start - timedelta(days=1)):
-        for selected, hours in parsed:
-            if days[reference.weekday()] not in selected or hours in {'off', 'closed'}:
-                continue
-            for window in hours.split(','):
-                open_time, close_time = window.split('-')
-                opened, closed = _clock_on_date(reference, open_time), _clock_on_date(reference, close_time)
-                if opened is None or closed is None:
-                    continue
-                if closed <= opened:
-                    closed += timedelta(days=1)
-                if opened.timestamp() <= start.timestamp() and end.timestamp() <= closed.timestamp():
-                    return True
-    return False
-
-
-def _clock_on_date(reference: datetime, clock: str) -> datetime | None:
-    hour, minute = (int(part) for part in clock.split(":"))
-    if minute > 59 or hour > 24 or (hour == 24 and minute != 0):
-        return None
-    if hour == 24:
-        midnight = reference.replace(hour=0, minute=0, second=0, microsecond=0)
-        return midnight + timedelta(days=1)
-    return reference.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-
-def _day_in_range(day: str, first: str, last: str) -> bool:
-    days = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
-    start_index, end_index, day_index = days.index(first), days.index(last), days.index(day)
-    if start_index <= end_index:
-        return start_index <= day_index <= end_index
-    return day_index >= start_index or day_index <= end_index
-
-
 @dataclass(slots=True)
 class _Beam:
     steps: tuple[TimelineStep, ...]
@@ -384,7 +195,7 @@ class _Beam:
     live_steps: int = 0
 
 
-def _extend_beam(
+def extend_beam(
     beam: _Beam,
     candidate: Candidate,
     request: ItineraryInput,
@@ -416,7 +227,7 @@ def _extend_beam(
     window_end = outing_deadline(request.start_at, request.available_minutes)
     if activity_end.timestamp() <= activity_start.timestamp() or activity_end.timestamp() > window_end.timestamp():
         return None
-    if not _known_open_during(candidate.opening_hours, activity_start, activity_end):
+    if not known_open_during(candidate.opening_hours, activity_start, activity_end):
         return None
     rain, severe = weather_during(weather, activity_start, activity_end)
     if candidate.indoor is False and (rain >= 75 or severe):
@@ -525,7 +336,7 @@ def _plans_are_too_similar(left: _Beam, right: _Beam) -> bool:
     return shared == smaller_size or shared / smaller_size >= 0.75
 
 
-def _empty_beam(request: ItineraryInput) -> _Beam:
+def empty_beam(request: ItineraryInput) -> _Beam:
     return _Beam((), request.start_at, request.coordinates, 0, 0, 0, 0)
 
 
@@ -536,11 +347,11 @@ def _rebuild_route(
 ) -> _Beam | None:
     if not candidates or len({candidate.id for candidate in candidates}) != len(candidates):
         return None
-    beam = _empty_beam(request)
+    beam = empty_beam(request)
     for candidate in candidates:
-        if not _candidate_is_possible(candidate, request, weather):
+        if not candidate_is_possible(candidate, request, weather):
             return None
-        extended = _extend_beam(beam, candidate, request, weather)
+        extended = extend_beam(beam, candidate, request, weather)
         if extended is None:
             return None
         beam = extended
@@ -630,7 +441,7 @@ def generate_itineraries(
     max_stops: int = 3,
 ) -> GenerationResult:
     rng = random.Random(request.regeneration_seed)
-    feasible = list({item.id: item for item in candidates if _candidate_is_possible(item, request, weather)}.values())
+    feasible = list({item.id: item for item in candidates if candidate_is_possible(item, request, weather)}.values())
     rng.shuffle(feasible)
     feasible.sort(
         key=lambda item: candidate_score(item, request, weather)
@@ -642,17 +453,7 @@ def generate_itineraries(
         required.add(request.centerpiece_id)
     if not required.issubset({c.id for c in feasible}):
         raise ValueError("A kept stop or centerpiece no longer fits. Unlock it or choose another idea.")
-    beams = [
-        _Beam(
-            steps=(),
-            current_time=request.start_at,
-            current_coordinates=request.coordinates,
-            total_cost_low=0,
-            total_cost_high=0,
-            score=0,
-            idle_minutes=0,
-        )
-    ]
+    beams = [empty_beam(request)]
     completed: list[_Beam] = []
     for _ in range(max_stops):
         next_beams: list[_Beam] = []
@@ -661,7 +462,7 @@ def generate_itineraries(
             for candidate in feasible:
                 if candidate.id in used_ids:
                     continue
-                extended = _extend_beam(beam, candidate, request, weather)
+                extended = extend_beam(beam, candidate, request, weather)
                 if extended:
                     next_beams.append(extended)
                     if required.issubset({s.candidate_id for s in extended.steps}):
@@ -699,7 +500,6 @@ def generate_itineraries(
     plans = tuple(_beam_to_plan(beam, request, index) for index, beam in enumerate(selected))
     context = tuple(feasible)
     return GenerationResult(
-        request=request,
         weather=weather,
         plans=with_additional_options(request, context, weather, plans),
         warnings=warnings,

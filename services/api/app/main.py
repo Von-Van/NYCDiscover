@@ -5,7 +5,6 @@ import secrets
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +16,7 @@ from .config import settings
 from .database import Database
 from .engine import generate_itineraries
 from .events import event_browsing_input, today_events_response
-from .domain import Coordinates
+from .domain import Coordinates, ItineraryInput
 from .fieldguide import discovery_response, remix_inputs, remixed_response
 from .options import apply_generation_option, itinerary_input
 from .limits import (
@@ -47,6 +46,9 @@ from .schemas import (
     TodayEventsResponse,
 )
 from .sharing import PostgresShareStore, sign_snapshot, verify_generation, verify_snapshot
+from .time_math import NYC
+
+REMIX_SIGNATURE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 configure_sentry(settings)
@@ -166,8 +168,6 @@ async def enforce_limit(
     try:
         retry_after = await request.app.state.rate_limiter.check(key, limit, window_seconds)
     except Exception as exc:
-        if settings.fixture_mode:
-            raise
         raise HTTPException(
             status_code=503,
             detail="Shared request controls are temporarily unavailable.",
@@ -178,6 +178,31 @@ async def enforce_limit(
             detail="Too many requests. Please try again shortly.",
             headers={"Retry-After": str(retry_after)},
         )
+
+
+def require_today(start_at: datetime) -> None:
+    now = datetime.now(NYC)
+    if start_at.date() != now.date():
+        raise HTTPException(status_code=422, detail="The MVP only supports plans for today.")
+    if start_at < now - timedelta(minutes=5):
+        raise HTTPException(status_code=422, detail="The start time must be now or later today.")
+
+
+async def fetch_planning_context(request: Request, brief: ItineraryInput):
+    try:
+        weather, weather_warnings = await request.app.state.providers.weather(brief)
+        candidates, candidate_warnings = await request.app.state.providers.candidates(brief)
+    except ProviderBusyError as exc:
+        raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
+    return weather, candidates, (*weather_warnings, *candidate_warnings)
+
+
+def sign_generation(
+    request: Request, brief: GenerateRequest, generation: GenerationResponse, issued_at: int | None = None
+) -> None:
+    generation.swap_token = sign_snapshot(brief, generation, request.app.state.swap_signing_secret, issued_at)
+    if request.app.state.share_store and settings.share_signing_secret:
+        generation.snapshot_token = sign_snapshot(brief, generation, settings.share_signing_secret, issued_at)
 
 
 @app.get("/v1/geocode", response_model=GeocodeResponse)
@@ -195,27 +220,11 @@ async def geocode(
 @app.post("/v1/itineraries/generate", response_model=GenerationResponse)
 async def generate(payload: GenerateRequest, request: Request) -> GenerationResponse:
     await enforce_limit(request, "generate", 6, 600)
-    nyc_tz = ZoneInfo("America/New_York")
-    start_at = payload.start_at
-    if start_at.tzinfo is None:
-        start_at = start_at.replace(tzinfo=nyc_tz)
-    else:
-        start_at = start_at.astimezone(nyc_tz)
-    now = datetime.now(nyc_tz)
-    if start_at.date() != now.date():
-        raise HTTPException(status_code=422, detail="The MVP only supports plans for today.")
-    if start_at < now - timedelta(minutes=5):
-        raise HTTPException(status_code=422, detail="The start time must be now or later today.")
-
     planner_input = itinerary_input(payload)
+    require_today(planner_input.start_at)
+    weather, candidates, warnings = await fetch_planning_context(request, planner_input)
     try:
-        weather, weather_warnings = await request.app.state.providers.weather(planner_input)
-        candidates, candidate_warnings = await request.app.state.providers.candidates(planner_input)
-    except ProviderBusyError as exc:
-        raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
-    try:
-        result = await run_in_threadpool(generate_itineraries, planner_input, candidates, weather,
-                                        tuple((*weather_warnings, *candidate_warnings)))
+        result = await run_in_threadpool(generate_itineraries, planner_input, candidates, weather, warnings)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     response = GenerationResponse.model_validate({
@@ -227,9 +236,7 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
         "snapshot_token": None,
         "candidate_context": [asdict(candidate) for candidate in result.candidate_context],
     })
-    response.swap_token = sign_snapshot(payload, response, request.app.state.swap_signing_secret)
-    if request.app.state.share_store and settings.share_signing_secret:
-        response.snapshot_token = sign_snapshot(payload, response, settings.share_signing_secret)
+    sign_generation(request, payload, response)
     return response
 
 
@@ -237,22 +244,15 @@ async def generate(payload: GenerateRequest, request: Request) -> GenerationResp
 async def discover_today(payload: GenerateRequest, request: Request) -> DiscoveryResponse:
     await enforce_limit(request, "discovery", 20, 600)
     brief = itinerary_input(payload)
-    now = datetime.now(ZoneInfo("America/New_York"))
-    if brief.start_at.date() != now.date() or brief.start_at < now - timedelta(minutes=5):
-        raise HTTPException(status_code=422, detail="Choose now or later today in New York.")
-    try:
-        weather, weather_warnings = await request.app.state.providers.weather(brief)
-        candidates, candidate_warnings = await request.app.state.providers.candidates(brief)
-    except ProviderBusyError as exc:
-        raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
-    return await run_in_threadpool(discovery_response, brief, candidates, weather,
-                                  tuple((*weather_warnings, *candidate_warnings)), settings.fixture_mode)
+    require_today(brief.start_at)
+    weather, candidates, warnings = await fetch_planning_context(request, brief)
+    return await run_in_threadpool(discovery_response, brief, candidates, weather, warnings, settings.fixture_mode)
 
 
 @app.post("/v1/events/today", response_model=TodayEventsResponse)
 async def events_today(payload: TodayEventsRequest, request: Request) -> TodayEventsResponse:
     await enforce_limit(request, "events-today", 20, 600)
-    now = datetime.now(ZoneInfo("America/New_York"))
+    now = datetime.now(NYC)
     origin = Coordinates(payload.coordinates.latitude, payload.coordinates.longitude)
     try:
         candidates, warnings = await request.app.state.providers.events(event_browsing_input(origin, now))
@@ -264,26 +264,22 @@ async def events_today(payload: TodayEventsRequest, request: Request) -> TodayEv
 @app.post("/v1/itineraries/remix", response_model=RemixResponse)
 async def remix(payload: RemixRequest, request: Request) -> RemixResponse:
     await enforce_limit(request, "remix", 12, 600)
-    # A same-day outing can last up to twelve hours. Remix always re-fetches
-    # availability and enforces the original deadline; snapshot-only swaps
-    # retain their existing one-hour lifetime.
-    if not verify_generation(payload.brief, payload.generation, payload.swap_token, request.app.state.swap_signing_secret, 86400):
+    # Remix always re-fetches availability and enforces the original deadline, so it
+    # accepts a signature for the rest of the outing day; snapshot-only swaps keep the
+    # one-hour default.
+    if not verify_generation(
+        payload.brief, payload.generation, payload.swap_token,
+        request.app.state.swap_signing_secret, REMIX_SIGNATURE_MAX_AGE_SECONDS,
+    ):
         raise HTTPException(status_code=400, detail="This editing session expired or changed. Make a fresh plan.")
     try:
-        effective, brief, prefix = remix_inputs(payload, datetime.now(ZoneInfo("America/New_York")))
-        weather, weather_warnings = await request.app.state.providers.weather(brief)
-        candidates, candidate_warnings = await request.app.state.providers.candidates(brief)
-        result = await run_in_threadpool(remixed_response, payload, effective, brief, prefix, candidates, weather,
-                                        tuple((*weather_warnings, *candidate_warnings)))
-    except ProviderBusyError as exc:
-        raise HTTPException(status_code=503, detail="Live data providers are busy. Try again shortly.") from exc
+        effective, brief, prefix = remix_inputs(payload, datetime.now(NYC))
+        weather, candidates, warnings = await fetch_planning_context(request, brief)
+        result = await run_in_threadpool(remixed_response, payload, effective, brief, prefix, candidates, weather, warnings)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    # Fresh availability was checked. New signatures cover the effective brief,
-    # whose original outing deadline is retained by remix_inputs.
-    result.generation.swap_token = sign_snapshot(result.brief, result.generation, request.app.state.swap_signing_secret)
-    if request.app.state.share_store and settings.share_signing_secret:
-        result.generation.snapshot_token = sign_snapshot(result.brief, result.generation, settings.share_signing_secret)
+    # New signatures cover the effective brief, whose original deadline remix_inputs retains.
+    sign_generation(request, result.brief, result.generation)
     return result
 
 
@@ -294,19 +290,14 @@ async def swap_option(payload: ApplyOptionRequest, request: Request) -> Generati
         payload.brief, payload.generation, payload.swap_token, request.app.state.swap_signing_secret
     ):
         raise HTTPException(status_code=400, detail="These options have expired or changed. Regenerate to continue editing.")
-    if itinerary_input(payload.brief).start_at.date() != datetime.now(ZoneInfo("America/New_York")).date():
+    if itinerary_input(payload.brief).start_at.date() != datetime.now(NYC).date():
         raise HTTPException(status_code=409, detail="These plans were for another day. Regenerate for today.")
     try:
         response = await run_in_threadpool(apply_generation_option, payload)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     # Changes issue a new signature without extending the original one-hour editing window.
-    issued_at = int(payload.swap_token.split(".", 1)[0])
-    response.swap_token = sign_snapshot(
-        payload.brief, response, request.app.state.swap_signing_secret, issued_at
-    )
-    if request.app.state.share_store and settings.share_signing_secret:
-        response.snapshot_token = sign_snapshot(payload.brief, response, settings.share_signing_secret, issued_at)
+    sign_generation(request, payload.brief, response, issued_at=int(payload.swap_token.split(".", 1)[0]))
     return response
 
 

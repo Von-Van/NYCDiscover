@@ -1,4 +1,4 @@
-export const NYC_TIMEZONE = "America/New_York";
+const NYC_TIMEZONE = "America/New_York";
 
 export function nycDate(value: Date | string = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: NYC_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value));

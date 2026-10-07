@@ -67,10 +67,6 @@ class PostgresProviderThrottle:
             await asyncio.sleep(delay)
 
 
-class RateLimiter(Protocol):
-    async def check(self, key: str, limit: int, window_seconds: int) -> int | None: ...
-
-
 class MemoryRateLimiter:
     def __init__(self) -> None:
         self._counts: dict[str, tuple[int, float]] = {}

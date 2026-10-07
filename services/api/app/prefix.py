@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import Any
-
-
-ASGIReceive = Callable[[], Awaitable[dict[str, Any]]]
-ASGISend = Callable[[dict[str, Any]], Awaitable[None]]
-ASGIApp = Callable[[dict[str, Any], ASGIReceive, ASGISend], Awaitable[None]]
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 class ServicePrefixMiddleware:
@@ -19,9 +13,9 @@ class ServicePrefixMiddleware:
 
     async def __call__(
         self,
-        scope: dict[str, Any],
-        receive: ASGIReceive,
-        send: ASGISend,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> None:
         if scope["type"] in {"http", "websocket"}:
             path = scope.get("path", "")

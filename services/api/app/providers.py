@@ -8,17 +8,26 @@ import re
 import html
 import urllib.parse
 import urllib.request
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from .areas import find_area
 from .cache import ProviderCache
 from .config import Settings
-from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext, WeatherPeriod, PlaceDetails
+from .domain import (
+    CATEGORY_DEFAULTS,
+    Candidate,
+    Coordinates,
+    ItineraryInput,
+    PlaceDetails,
+    WeatherContext,
+    WeatherPeriod,
+)
 from .curated import merge_curated
 from .fixtures import fixture_candidates, fixture_weather, fixture_today_events
 from .limits import MemoryProviderThrottle, ProviderThrottle
+from .time_math import NYC
 
 
 NYC_BOUNDS = {
@@ -26,19 +35,6 @@ NYC_BOUNDS = {
     "north": 40.9176,
     "west": -74.2591,
     "east": -73.7002,
-}
-
-CATEGORY_DEFAULTS: dict[str, tuple[int, float, float, bool | None, tuple[str, ...]]] = {
-    "restaurant": (65, 16, 32, True, ("food-focused", "social", "date-night")),
-    "bar": (70, 12, 28, True, ("social", "date-night", "chaotic")),
-    "cafe": (45, 5, 14, True, ("productive", "relaxing", "low-energy")),
-    "museum": (75, 0, 25, True, ("cultural", "relaxing", "low-energy")),
-    "gallery": (50, 0, 15, True, ("cultural", "relaxing", "date-night")),
-    "library": (55, 0, 0, True, ("productive", "cultural", "low-energy")),
-    "park": (55, 0, 0, False, ("outdoors", "relaxing", "date-night")),
-    "bookstore": (45, 0, 20, True, ("productive", "cultural", "relaxing")),
-    "landmark": (45, 0, 10, None, ("cultural", "outdoors", "relaxing")),
-    "event": (75, 0, 25, None, ("social", "cultural", "chaotic")),
 }
 
 # Nominatim allows roughly one lookup a second, so only a handful of distinct
@@ -197,7 +193,6 @@ class ProviderHub:
             warnings = ("Weather provider returned cached data.",) if point_stale or hourly_stale else ()
             return context, warnings
         except Exception:
-            from dataclasses import replace
             return replace(fixture_weather("clear"), assumed=True), (
                 "Live weather is unavailable; using a neutral weather assumption.",
             )
@@ -208,16 +203,6 @@ class ProviderHub:
         tasks = [self._overpass_candidates(request)]
         if self.settings.nyc_event_calendar_key:
             tasks.append(self._event_candidates(request))
-        else:
-            tasks.append(
-                asyncio.sleep(
-                    0,
-                    result=(
-                        [],
-                        ("NYC Event Calendar is disabled until NYC_EVENT_CALENDAR_KEY is set.",),
-                    ),
-                )
-            )
         results = await asyncio.gather(*tasks, return_exceptions=True)
         candidates: list[Candidate] = []
         warnings: list[str] = []
@@ -228,6 +213,8 @@ class ProviderHub:
             items, provider_warnings = result
             candidates.extend(items)
             warnings.extend(provider_warnings)
+        if not self.settings.nyc_event_calendar_key:
+            warnings.append("NYC Event Calendar is disabled until NYC_EVENT_CALENDAR_KEY is set.")
         return merge_curated(candidates, request), tuple(dict.fromkeys(warnings))
 
     async def _overpass_candidates(
@@ -324,7 +311,7 @@ class ProviderHub:
 
     async def _calendar_events(self, start_at: datetime) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
         """Read every page of the NYC day, shared by browsing and planning caches."""
-        start_at = start_at.astimezone(ZoneInfo("America/New_York")).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_at = start_at.astimezone(NYC).replace(hour=0, minute=0, second=0, microsecond=0)
         end_at = start_at + timedelta(days=1)
         event_date_format = "%m/%d/%Y %I:%M %p"
         params = {"startDate": start_at.strftime(event_date_format), "endDate": end_at.strftime(event_date_format), "sort": "DATE"}
@@ -382,7 +369,7 @@ class ProviderHub:
             name = raw.get("name") or raw.get("title")
             if not name or not start_at or _event_is_canceled(raw) or _event_is_virtual(_event_address(raw), _event_venue(raw), name):
                 continue
-            if start_at.date() != request.start_at.astimezone(ZoneInfo("America/New_York")).date():
+            if start_at.date() != request.start_at.astimezone(NYC).date():
                 continue
             coordinates = _event_coordinates(raw)
             approximate_area: str | None = None
@@ -625,8 +612,8 @@ def _parse_datetime(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=ZoneInfo("America/New_York"))
-        return parsed.astimezone(ZoneInfo("America/New_York"))
+            return parsed.replace(tzinfo=NYC)
+        return parsed.astimezone(NYC)
     except ValueError:
         return None
 

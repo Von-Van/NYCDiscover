@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from dataclasses import replace
 
+from .curated import curated_candidates
 from .domain import Candidate, Coordinates, ItineraryInput, WeatherContext, PlaceDetails
+from .editorial import ACTIVITIES
+from .engine import haversine_miles
 
 
 def fixture_today_events(now: datetime) -> list[Candidate]:
@@ -43,8 +46,6 @@ def fixture_weather(kind: str = "clear") -> WeatherContext:
 
 
 def fixture_candidates(request: ItineraryInput) -> list[Candidate]:
-    from .curated import curated_candidates
-    from .engine import haversine_miles
     if haversine_miles(request.coordinates, Coordinates(40.787, -73.9754)) > 3:
         return [replace(c, source_name='Fixture field notes') for c in curated_candidates(request)]
     start = request.start_at
@@ -206,7 +207,6 @@ def fixture_candidates(request: ItineraryInput) -> list[Candidate]:
             estimate_notes=("Access and duration should be verified.",),
         ),
     ]
-    from .editorial import ACTIVITIES
     return [replace(c, details=PlaceDetails(
         description='A sample neighborhood stop for trying out your afternoon.',
         activity=ACTIVITIES.get(c.category, 'Enjoy this sample event as part of your outing.'),

@@ -8,12 +8,13 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
-from .domain import Candidate, Coordinates, ItineraryInput, PlaceDetails
+from .domain import CATEGORY_DEFAULTS, Candidate, Coordinates, ItineraryInput, PlaceDetails
+from .engine import haversine_miles
 from .schemas import CoordinatesSchema
+from .time_math import NYC
 
 CONTENT_PATH = Path(__file__).parent / 'content' / 'places.v1.json'
 
@@ -91,7 +92,6 @@ def review_issues(place: CuratedPlace, today: date) -> list[str]:
 
 
 def curated_candidates(request: ItineraryInput) -> list[Candidate]:
-    from .providers import CATEGORY_DEFAULTS
     today = request.start_at.date()
     results = []
     for p in load_collection():
@@ -121,7 +121,6 @@ def curated_candidates(request: ItineraryInput) -> list[Candidate]:
 
 
 def merge_curated(candidates: list[Candidate], request: ItineraryInput) -> list[Candidate]:
-    from .engine import haversine_miles
     records = load_collection()
     normalized = lambda s: re.sub(r'[^a-z0-9]', '', s.lower())
     def record_for(c):
@@ -150,7 +149,7 @@ def merge_curated(candidates: list[Candidate], request: ItineraryInput) -> list[
 
 
 def main() -> int:
-    today = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else datetime.now(ZoneInfo('America/New_York')).date()
+    today = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else datetime.now(NYC).date()
     places = load_collection()
     issues = [(p.id, issue) for p in places for issue in review_issues(p, today)]
     print(f'Validated {len(places)} places across {len({p.borough for p in places})} boroughs; review date {today}.')

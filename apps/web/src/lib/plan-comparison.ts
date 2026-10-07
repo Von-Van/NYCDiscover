@@ -1,6 +1,6 @@
 import type { ItineraryPlan } from "./api-types";
 
-export type PlanComparisonLabel =
+type PlanComparisonLabel =
   | "Best overall"
   | "Lowest cost"
   | "Least travel"

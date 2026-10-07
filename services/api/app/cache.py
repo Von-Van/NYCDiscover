@@ -7,8 +7,6 @@ from typing import Any, Protocol
 
 
 class ProviderCache(Protocol):
-    status: str
-
     async def get(self, key: str, allow_stale: bool = False) -> dict[str, Any] | list[Any] | None: ...
 
     async def set(
@@ -26,8 +24,6 @@ class _MemoryEntry:
 
 
 class MemoryProviderCache:
-    status = "memory"
-
     def __init__(self) -> None:
         self._entries: dict[str, _MemoryEntry] = {}
 
@@ -55,8 +51,6 @@ class MemoryProviderCache:
 
 
 class PostgresProviderCache:
-    status = "postgres"
-
     def __init__(self, pool: Any) -> None:
         self.pool = pool
 

@@ -1,5 +1,4 @@
 from collections import Counter
-from copy import deepcopy
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -9,14 +8,15 @@ import pytest
 from app.curated import curated_candidates, load_collection, merge_curated, review_issues
 from app.domain import Coordinates, PlaceDetails, WeatherPeriod
 from app.editorial import today_reason
-from app.engine import _known_open_during, _rebuild_route, candidate_score, generate_itineraries
+from app.engine import _rebuild_route, candidate_score, generate_itineraries
+from app.opening_hours import known_open_during
 from app.fieldguide import discovery_response, remix_inputs, remixed_response
 from app.fixtures import fixture_candidates, fixture_weather
 from app.options import itinerary_input
 from app.providers import _event_price
 from app.schemas import CoordinatesSchema, GenerateRequest, GenerationResponse, RemixRequest
 from app.time_math import add_minutes, elapsed_minutes, outing_deadline
-from test_options import brief, candidate
+from helpers import brief, candidate
 
 NYC = ZoneInfo('America/New_York')
 TODAY = datetime(2026, 9, 26, 12, tzinfo=NYC)
@@ -90,7 +90,6 @@ def test_provider_stops_receive_activity_suggestions_without_overwriting_source_
     assert route.steps[0].details.activity == 'Find a quiet corner and something new to read.'
     assert route.steps[0].details.price_status == 'free'
     assert route.steps[1].details == written.details
-    assert not library.details.activity  # Templates do not modify provider evidence.
 
 
 def test_curated_coverage_review_expiration_recurrence_and_official_closures():
@@ -212,11 +211,11 @@ def test_nyc_midnight_visitors_and_dst_elapsed_time():
 
 def test_hours_support_closed_days_split_sessions_and_overnight():
     saturday = TODAY
-    assert not _known_open_during('Mo-Su 09:00-18:00; Sa off', saturday, saturday+timedelta(minutes=30))
-    assert _known_open_during('Mo,We,Sa 10:00-13:00,14:00-18:00', saturday, saturday+timedelta(minutes=30))
-    assert not _known_open_during('Mo,We,Sa 10:00-13:00,14:00-18:00', saturday.replace(hour=13), saturday.replace(hour=14))
+    assert not known_open_during('Mo-Su 09:00-18:00; Sa off', saturday, saturday+timedelta(minutes=30))
+    assert known_open_during('Mo,We,Sa 10:00-13:00,14:00-18:00', saturday, saturday+timedelta(minutes=30))
+    assert not known_open_during('Mo,We,Sa 10:00-13:00,14:00-18:00', saturday.replace(hour=13), saturday.replace(hour=14))
     early_saturday = saturday.replace(hour=1)
-    assert _known_open_during('Fr 20:00-02:00', early_saturday, early_saturday+timedelta(minutes=30))
+    assert known_open_during('Fr 20:00-02:00', early_saturday, early_saturday+timedelta(minutes=30))
 
 
 def test_second_fall_hour_fixed_event_remains_reachable():

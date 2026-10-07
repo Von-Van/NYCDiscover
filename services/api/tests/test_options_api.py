@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
@@ -8,38 +8,12 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import app
-from app.schemas import CreateShareRequest, GenerationResponse, SharedItineraryResponse
-from app.sharing import redact_share, verify_snapshot
-
-
-class ShareStore:
-    def __init__(self):
-        self.shared = None
-
-    async def create(self, request):
-        brief, generation = redact_share(request)
-        now = datetime.now(ZoneInfo("America/New_York"))
-        self.shared = SharedItineraryResponse(
-            id="a" * 22, brief=brief, generation=generation,
-            selected_plan_id=request.selected_plan_id, created_at=now,
-            expires_at=now + timedelta(days=7),
-        )
-        return self.shared
-
-    async def get(self, id):
-        return self.shared, False
-
-
-@pytest.fixture
-def client(monkeypatch):
-    monkeypatch.setattr("app.main.settings", Settings(fixture_mode=True, database_url="", share_signing_secret="options-test"))
-    with TestClient(app) as test_client:
-        app.state.share_store = ShareStore()
-        yield test_client
+from app.schemas import CreateShareRequest, GenerationResponse
+from app.sharing import verify_snapshot
 
 
 def generate(client):
-    from test_options import candidate
+    from helpers import candidate
 
     now = datetime.now(ZoneInfo("America/New_York"))
     brief = {
@@ -141,7 +115,7 @@ def test_swaps_work_without_sharing_configuration(monkeypatch):
 
 
 def test_legacy_generation_still_loads_without_additional_options():
-    from test_launch_security import generation
+    from helpers import generation_response as generation
 
     legacy = generation().model_dump(exclude={"candidate_context", "swap_token"})
     for plan in legacy["plans"]:

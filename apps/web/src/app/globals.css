@@ -942,34 +942,6 @@ input[type="range"] {
   letter-spacing: -0.055em;
 }
 
-.confidence-seal {
-  display: grid;
-  width: 80px;
-  height: 80px;
-  flex: 0 0 auto;
-  place-content: center;
-  border: 2px solid var(--red);
-  border-radius: 50%;
-  color: var(--red);
-  text-align: center;
-  transform: rotate(7deg);
-}
-
-.confidence-seal strong {
-  font-family: var(--condensed);
-  font-size: 1.7rem;
-  line-height: 1;
-}
-
-.confidence-seal span {
-  max-width: 66px;
-  font-family: var(--condensed);
-  font-size: 0.55rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .plan-facts {
   position: relative;
   display: grid;
@@ -1962,11 +1934,6 @@ footer a {
 
   .plan-summary h2 {
     font-size: 3.2rem;
-  }
-
-  .confidence-seal {
-    width: 74px;
-    height: 74px;
   }
 
   .plan-facts {

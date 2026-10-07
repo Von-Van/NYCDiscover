@@ -3,6 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+# Per category: typical minutes, cost low/high per person, indoor, and the moods it suits.
+CATEGORY_DEFAULTS: dict[str, tuple[int, float, float, bool | None, tuple[str, ...]]] = {
+    "restaurant": (65, 16, 32, True, ("food-focused", "social", "date-night")),
+    "bar": (70, 12, 28, True, ("social", "date-night", "chaotic")),
+    "cafe": (45, 5, 14, True, ("productive", "relaxing", "low-energy")),
+    "museum": (75, 0, 25, True, ("cultural", "relaxing", "low-energy")),
+    "gallery": (50, 0, 15, True, ("cultural", "relaxing", "date-night")),
+    "library": (55, 0, 0, True, ("productive", "cultural", "low-energy")),
+    "park": (55, 0, 0, False, ("outdoors", "relaxing", "date-night")),
+    "bookstore": (45, 0, 20, True, ("productive", "cultural", "relaxing")),
+    "landmark": (45, 0, 10, None, ("cultural", "outdoors", "relaxing")),
+    "event": (75, 0, 25, None, ("social", "cultural", "chaotic")),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class Coordinates:
@@ -164,7 +178,6 @@ class ItineraryPlan:
 
 @dataclass(frozen=True, slots=True)
 class GenerationResult:
-    request: ItineraryInput
     weather: WeatherContext
     plans: tuple[ItineraryPlan, ...]
     warnings: tuple[str, ...] = ()

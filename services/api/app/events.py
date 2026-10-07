@@ -1,22 +1,22 @@
 """A readable calendar alongside a plan, independent of itinerary constraints."""
 from dataclasses import asdict
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from .domain import Candidate, Coordinates, ItineraryInput
 from .engine import haversine_miles
 from .schemas import TodayEvent, TodayEventsResponse
+from .time_math import NYC
 
 
 def event_browsing_input(origin: Coordinates, now: datetime) -> ItineraryInput:
     return ItineraryInput(location_label="Event browsing", coordinates=origin,
-        start_at=now.astimezone(ZoneInfo("America/New_York")), available_minutes=240,
+        start_at=now.astimezone(NYC), available_minutes=240,
         budget_min=0, budget_max=500, group_size=1, transport_mode="walk", radius_miles=5, mood="cultural")
 
 
 def today_events_response(origin: Coordinates, now: datetime, candidates: list[Candidate],
                           warnings: tuple[str, ...], fixture: bool) -> TodayEventsResponse:
-    now = now.astimezone(ZoneInfo("America/New_York"))
+    now = now.astimezone(NYC)
     events = []
     seen = set()
     for candidate in candidates:

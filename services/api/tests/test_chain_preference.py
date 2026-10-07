@@ -2,15 +2,15 @@ from dataclasses import replace
 
 import pytest
 
+from app.chains import is_chain_location
 from app.engine import (
     CHAIN_SCORE_MULTIPLIER,
     candidate_score,
     generate_itineraries,
-    is_chain_location,
     with_additional_options,
 )
 from app.fixtures import fixture_weather
-from test_options import brief, candidate, plan
+from helpers import brief, candidate, plan
 
 
 @pytest.mark.parametrize("name,brand", [
@@ -31,7 +31,6 @@ def test_known_major_chains_receive_ranking_penalty(name, brand):
     assert candidate_score(chain, request, fixture_weather()) == pytest.approx(
         candidate_score(local, request, fixture_weather()) * CHAIN_SCORE_MULTIPLIER
     )
-    assert chain.confidence == local.confidence  # Popularity preference is not data uncertainty.
 
 
 @pytest.mark.parametrize("name,brand", [

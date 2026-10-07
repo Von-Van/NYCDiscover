@@ -7,21 +7,16 @@ import { toGenerateRequest, type DiscoveryForm } from "@/lib/form";
 import { getDiscoverySession, saveDiscoverySession } from "@/lib/discovery-session";
 import { nycTime } from "@/lib/nyc-time";
 import { fieldguideEvent, priceLabel } from "@/lib/fieldguide";
+import { useRefreshTick } from "@/lib/use-refresh-tick";
 
 export function TodayEdition({ form, onChoose, disabled }: { form: DiscoveryForm; onChoose: (id: string) => void; disabled: boolean }) {
   const [result, setResult] = useState<DiscoveryResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [revision, setRevision] = useState(0);
+  const [revision, retry] = useRefreshTick();
   // Store the brief with the result so an old card cannot be selected during a refetch.
   const briefKey = JSON.stringify(form);
   const [resultKey, setResultKey] = useState("");
-  useEffect(() => {
-    const refresh = () => { if (!document.hidden) setRevision((n) => n + 1); };
-    const interval = setInterval(refresh, 5 * 60_000);
-    document.addEventListener("visibilitychange", refresh);
-    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", refresh); };
-  }, []);
   useEffect(() => {
     if (!form.coordinates) return;
     const controller = new AbortController();
@@ -47,7 +42,7 @@ export function TodayEdition({ form, onChoose, disabled }: { form: DiscoveryForm
 
   return (
     <section className="today-edition" aria-labelledby="today-title" aria-busy={loading}>
-      <div className="edition-heading"><div><p className="eyebrow">Your neighborhood dispatch</p><h2 id="today-title">A few reasons to go out.</h2></div>{form.coordinates && <button type="button" className="text-button" disabled={loading || disabled} onClick={() => setRevision((n) => n + 1)}>Refresh today’s picks ↻</button>}</div>
+      <div className="edition-heading"><div><p className="eyebrow">Your neighborhood dispatch</p><h2 id="today-title">A few reasons to go out.</h2></div>{form.coordinates && <button type="button" className="text-button" disabled={loading || disabled} onClick={() => retry()}>Refresh today’s picks ↻</button>}</div>
       {!form.coordinates ? <p className="edition-empty">Choose a starting point above. We’ll find what fits around you today.</p> : error ? <p className="edition-empty" role="status">{error} You can still try making a plan with the brief above.</p> : loading || resultKey !== briefKey ? <p className="edition-empty" role="status">Checking the neighborhood’s calendar…</p> : <>
         <p className="edition-source">{result?.data_mode === "fixture" ? "Sample edition · fixture data" : "Today’s public listings"}{result?.generated_at ? ` · Checked ${nycTime(result.generated_at)} New York time` : ""}</p>
         <div className="discovery-cards">

@@ -1,30 +1,15 @@
 "use client";
-import { useNYCDate } from "@/lib/use-nyc-date";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError, getSharedItinerary } from "@/lib/api";
 import type { SharedItineraryResponse } from "@/lib/api-types";
+import { durationLabel } from "@/lib/fieldguide";
+import { nycDate, nycLongDate } from "@/lib/nyc-time";
 import { getPlanComparisonLabels } from "@/lib/plan-comparison";
+import { useNYCDate } from "@/lib/use-nyc-date";
 import { ItineraryMap } from "./ItineraryMap";
-import { nycTime, nycLongDate, nycDate } from "@/lib/nyc-time";
-import { priceLabel } from "@/lib/fieldguide";
-
-function formatTime(value: string) {
-  return nycTime(value);
-}
-
-function durationLabel(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return `${hours ? `${hours}h ` : ""}${remainder ? `${remainder}m` : ""}`.trim();
-}
-
-function confidenceLabel(confidence: number) {
-  if (confidence >= 0.82) return "High confidence";
-  if (confidence >= 0.66) return "Good confidence";
-  return "Worth verifying";
-}
+import { PlanFacts, PlanTabs, TimelineStop, WeatherStrip, useStepFocus } from "./PlanTimeline";
 
 interface SharedItineraryAppProps {
   shareId: string;
@@ -34,10 +19,8 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
   const today = useNYCDate();
   const [shared, setShared] = useState<SharedItineraryResponse | null>(null);
   const [activePlanId, setActivePlanId] = useState("");
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [previewStepId, setPreviewStepId] = useState<string | null>(null);
+  const focus = useStepFocus();
   const [error, setError] = useState<"missing" | "expired" | "failed" | null>(null);
-  const timelineRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   useEffect(() => {
     let active = true;
@@ -66,26 +49,10 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
     () => getPlanComparisonLabels(shared?.generation.plans ?? []),
     [shared],
   );
-  const activeStepId = previewStepId ?? selectedStepId;
 
   function activatePlan(planId: string) {
     setActivePlanId(planId);
-    setSelectedStepId(null);
-    setPreviewStepId(null);
-  }
-
-  function selectTimelineStep(stepId: string) {
-    setSelectedStepId(stepId);
-    setPreviewStepId(null);
-  }
-
-  function selectMapStep(stepId: string) {
-    setSelectedStepId(stepId);
-    setPreviewStepId(null);
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "auto"
-      : "smooth";
-    timelineRefs.current[stepId]?.scrollIntoView({ behavior, block: "center" });
+    focus.clear();
   }
 
   if (error) {
@@ -149,19 +116,12 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
             <div><dt>Group</dt><dd>{shared.brief.group_size}</dd></div>
             <div>
               <dt>Mood</dt>
-              <dd>{(shared.brief.moods.length ? shared.brief.moods : [shared.brief.mood]).map((mood) => mood.replace("-", " ")).join(", ")}</dd>
+              <dd>{(shared.brief.moods?.length ? shared.brief.moods : [shared.brief.mood]).map((mood) => mood.replace("-", " ")).join(", ")}</dd>
             </div>
           </dl>
 
           <div className="conditions-rail">
-            <div className="weather-strip">
-              <span className="weather-mark" aria-hidden="true">{shared.generation.weather.is_wet ? "☂" : "☼"}</span>
-              <div>
-                <strong>{shared.generation.weather.temperature_f ? `${shared.generation.weather.temperature_f}° · ` : ""}{shared.generation.weather.summary}</strong>
-                <span>{shared.generation.weather.precipitation_probability}% chance of precipitation</span>
-              </div>
-              <span className="weather-source">{shared.generation.weather.source_name}</span>
-            </div>
+            <WeatherStrip weather={shared.generation.weather} />
           </div>
 
           <article className="shared-edition-card" aria-label="Shared daily edition">
@@ -172,23 +132,7 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
             {today && nycDate(shared.brief.start_at) !== today && <p role="status">This is a snapshot of a past outing. Times and availability have not been refreshed.</p>}
             <Link className="text-button" href="/">Make a plan for today →</Link>
           </article>
-          <nav className="plan-tabs" aria-label="Choose an itinerary">
-            {shared.generation.plans.map((plan, index) => (
-              <button
-                key={plan.id}
-                className={activePlan.id === plan.id ? "active" : ""}
-                aria-pressed={activePlan.id === plan.id}
-                onClick={() => activatePlan(plan.id)}
-              >
-                <span className="plan-tab-topline">
-                  <span>Plan {String.fromCharCode(65 + index)}</span>
-                  {planLabels.get(plan.id) && <mark>{planLabels.get(plan.id)}</mark>}
-                </span>
-                <strong>{plan.title}</strong>
-                <small>{durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high}</small>
-              </button>
-            ))}
-          </nav>
+          <PlanTabs plans={shared.generation.plans} activePlanId={activePlan.id} labels={planLabels} onSelect={activatePlan} />
 
           <div className="result-grid">
             <article className="timeline-card">
@@ -196,56 +140,18 @@ export function SharedItineraryApp({ shareId }: SharedItineraryAppProps) {
                 <div><p className="eyebrow">{activePlan.subtitle}</p><h2>{activePlan.title}</h2></div>
                 <span className="edition-stamp">{activePlan.character || "Shared edition"}</span>
               </div>
-              <dl className="plan-facts">
-                <div><dt>Total time</dt><dd>{durationLabel(activePlan.total_minutes)}</dd></div>
-                <div><dt>Est. spend</dt><dd>${activePlan.total_cost_low}–${activePlan.total_cost_high}</dd></div>
-                <div><dt>Stops</dt><dd>{activePlan.steps.length}</dd></div>
-                <div><dt>Travel</dt><dd>{shared.brief.transport_mode}</dd></div>
-              </dl>
+              <PlanFacts plan={activePlan} transportMode={shared.brief.transport_mode} />
               <ol className="timeline">
-                {activePlan.steps.map((step, index) => (
-                  <li
-                    key={step.candidate_id}
-                    ref={(node) => { timelineRefs.current[step.candidate_id] = node; }}
-                    className={activeStepId === step.candidate_id ? "active" : ""}
-                    onMouseEnter={() => setPreviewStepId(step.candidate_id)}
-                    onMouseLeave={() => setPreviewStepId(null)}
-                    onFocusCapture={() => setPreviewStepId(step.candidate_id)}
-                    onBlurCapture={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPreviewStepId(null);
-                    }}
-                  >
-                    <div className="travel-label"><span>{step.travel_before.minutes} min {step.travel_before.mode}</span><small>{step.travel_before.distance_miles} mi estimate</small></div>
-                    <button
-                      type="button"
-                      className="timeline-marker"
-                      aria-label={`Show stop ${index + 1}, ${step.name}, on the map`}
-                      aria-pressed={selectedStepId === step.candidate_id}
-                      onClick={() => selectTimelineStep(step.candidate_id)}
-                    >{index + 1}</button>
-                    <div className="stop-card">
-                      <div className="stop-time"><strong>{formatTime(step.start_at)}</strong><span>to {formatTime(step.end_at)}</span></div>
-                      <div className="stop-copy">
-                        <span className="category-tag">{step.category}</span>
-                        <h3><button type="button" onClick={() => selectTimelineStep(step.candidate_id)}>{step.name}</button></h3>
-                        {step.details?.activity && <p className="stop-activity">{step.details.activity}</p>}
-                        <p className="stop-meta">{priceLabel(step)}</p>
-                        {step.details?.registration && <p className="registration-note">{step.details.registration}</p>}
-                        {step.why_today && <p className="today-reason">{step.why_today.text}</p>}
-                        <details><summary>What to verify</summary><p>{confidenceLabel(step.confidence)}</p>{step.estimate_notes.map((note) => <p key={note}>{note}</p>)}{step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}</details>
-                      </div>
-                    </div>
-                  </li>
-                ))}
+                {activePlan.steps.map((step, index) => <TimelineStop key={step.candidate_id} step={step} index={index} focus={focus} />)}
               </ol>
             </article>
             <aside className="map-column">
               <ItineraryMap
                 plan={activePlan}
-                activeStepId={activeStepId}
-                selectedStepId={selectedStepId}
-                onStepPreview={setPreviewStepId}
-                onStepSelect={selectMapStep}
+                activeStepId={focus.activeStepId}
+                selectedStepId={focus.selectedStepId}
+                onStepPreview={focus.preview}
+                onStepSelect={focus.selectFromMap}
               />
               <div className="map-caption"><span>ORIGIN REDACTED</span><p>The starting address is omitted from every shared snapshot.</p></div>
             </aside>

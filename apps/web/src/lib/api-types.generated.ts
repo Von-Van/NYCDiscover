@@ -245,20 +245,20 @@ export interface components {
              * Location Is Approximate
              * @default false
              */
-            location_is_approximate: boolean;
+            location_is_approximate?: boolean;
             details?: components["schemas"]["PlaceDetailsSchema"] | null;
             /**
              * Schedule Kind
              * @default fixed_start
              * @enum {string}
              */
-            schedule_kind: "fixed_start" | "drop_in" | "opening_hours";
+            schedule_kind?: "fixed_start" | "drop_in" | "opening_hours";
             /**
              * Recurrence
              * @default unknown
              * @enum {string}
              */
-            recurrence: "unknown" | "one_off" | "recurring";
+            recurrence?: "unknown" | "one_off" | "recurring";
             /** Final Day */
             final_day?: string | null;
         };
@@ -330,7 +330,7 @@ export interface components {
              * Budget Min
              * @default 0
              */
-            budget_min: number;
+            budget_min?: number;
             /** Budget Max */
             budget_max: number;
             /** Group Size */
@@ -353,7 +353,7 @@ export interface components {
              * Regeneration Seed
              * @default 0
              */
-            regeneration_seed: number;
+            regeneration_seed?: number;
             /** Centerpiece Id */
             centerpiece_id?: string | null;
             /**
@@ -361,7 +361,7 @@ export interface components {
              * @default new
              * @enum {string}
              */
-            discovery_mode: "easy" | "new" | "surprise";
+            discovery_mode?: "easy" | "new" | "surprise";
             /** Seen Candidate Ids */
             seen_candidate_ids?: string[];
             /** Visited Candidate Ids */
@@ -479,7 +479,7 @@ export interface components {
              * Introduction
              * @default
              */
-            introduction: string;
+            introduction?: string;
             why_today?: components["schemas"]["TodayReasonSchema"] | null;
             /** Prompt */
             prompt?: string | null;
@@ -514,7 +514,7 @@ export interface components {
              * Introduction
              * @default
              */
-            introduction: string;
+            introduction?: string;
             why_today?: components["schemas"]["TodayReasonSchema"] | null;
             /** Prompt */
             prompt?: string | null;
@@ -527,28 +527,28 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /**
              * Activity
              * @default
              */
-            activity: string;
+            activity?: string;
             /**
              * Neighborhood
              * @default
              */
-            neighborhood: string;
+            neighborhood?: string;
             /**
              * Borough
              * @default
              */
-            borough: string;
+            borough?: string;
             /**
              * Price Status
              * @default estimated
              * @enum {string}
              */
-            price_status: "free" | "verified" | "estimated" | "unknown";
+            price_status?: "free" | "verified" | "estimated" | "unknown";
             /** Registration */
             registration?: string | null;
             /** Source Urls */
@@ -559,7 +559,7 @@ export interface components {
              * Signature
              * @default false
              */
-            signature: boolean;
+            signature?: boolean;
             /** Prompt */
             prompt?: string | null;
         };
@@ -584,14 +584,14 @@ export interface components {
              * @default new
              * @enum {string}
              */
-            discovery_mode: "easy" | "new" | "surprise";
+            discovery_mode?: "easy" | "new" | "surprise";
             /** Completed Candidate Ids */
             completed_candidate_ids?: string[];
             /**
              * Continue Outing
              * @default false
              */
-            continue_outing: boolean;
+            continue_outing?: boolean;
             current_coordinates?: components["schemas"]["CoordinatesSchema"] | null;
             /** Current Location Label */
             current_location_label?: string | null;
@@ -718,7 +718,7 @@ export interface components {
              * @default 5
              * @constant
              */
-            radius_miles: 5;
+            radius_miles?: 5;
             /** Events */
             events: components["schemas"]["TodayEvent"][];
             /** Warnings */
@@ -789,7 +789,7 @@ export interface components {
              * Is Severe
              * @default false
              */
-            is_severe: boolean;
+            is_severe?: boolean;
         };
         /** WeatherResponse */
         WeatherResponse: {
@@ -811,7 +811,7 @@ export interface components {
              * Assumed
              * @default false
              */
-            assumed: boolean;
+            assumed?: boolean;
         };
     };
     responses: never;

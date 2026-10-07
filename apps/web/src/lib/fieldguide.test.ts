@@ -22,7 +22,7 @@ describe("New York time regardless of the visitor’s timezone", () => {
 
 it("never labels an unknown or estimated zero price as free", () => {
   const stop = { cost_low: 0, cost_high: 0 } as TimelineStep;
-  expect(priceLabel(stop)).not.toBe("Free");
+  expect(priceLabel(stop)).toBe("Est. $0–0");
   expect(priceLabel({ ...stop, details: { price_status: "unknown" } as TimelineStep["details"] })).toMatch(/unconfirmed/i);
   expect(priceLabel({ ...stop, details: { price_status: "free" } as TimelineStep["details"] })).toBe("Free to visit");
 });

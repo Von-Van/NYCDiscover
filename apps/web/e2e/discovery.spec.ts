@@ -29,7 +29,7 @@ async function generatePlan(page: Page) {
   await page.goto("/");
   await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
   await page.getByRole("button", { name: "Set", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: /Starting point set|demo starting point/ })).toContainText(/Starting point set|demo starting point/);
+  await expect(page.getByRole("status").filter({ hasText: /Starting point set|demo starting point/ })).toBeVisible();
   await page.getByRole("button", { name: /Make my plan/ }).click();
   await expect(page.getByRole("heading", { name: "Here’s your way out the door." })).toBeVisible();
 }
@@ -49,9 +49,7 @@ test("Upper West Side social plan stays within four hours and $40", async ({ pag
 test("form reports an unresolved location", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Make my plan/ }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Choose a starting location." }),
-  ).toContainText("Choose a starting location.");
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a starting location." })).toBeVisible();
 });
 
 test("creates a seven-day share and opens the selected comparison workspace", async ({ page }) => {
@@ -129,7 +127,7 @@ test.describe("desktop editorial workspace", () => {
 
     await page.getByLabel("Neighborhood, landmark, or address").fill("Upper West Side");
     await page.getByRole("button", { name: "Set", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: /Starting point set|demo starting point/ })).toContainText(/Starting point set|demo starting point/);
+    await expect(page.getByRole("status").filter({ hasText: /Starting point set|demo starting point/ })).toBeVisible();
     await callToAction.click();
     await expect(page.getByRole("heading", { name: "Here’s your way out the door." })).toBeVisible();
 

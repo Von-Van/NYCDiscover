@@ -30,3 +30,7 @@ apps/ios/.swiftpm/
 xcuserdata/
 *.xcuserstate
 *.xcresult
+
+# Agent instruction files that `next dev` writes when it detects an AI coding tool.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md

@@ -9,11 +9,14 @@ from app.cache import PostgresProviderCache
 from app.database import Database, run_migrations
 from app.limits import PostgresProviderThrottle, PostgresRateLimiter
 from app.sharing import PostgresShareStore
-from test_launch_security import share_request
+from helpers import share_request
 
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not configured")
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not configured"),
+]
 
 
 async def clean(database: Database) -> None:

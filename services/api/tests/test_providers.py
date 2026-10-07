@@ -13,6 +13,10 @@ from app.domain import Coordinates, ItineraryInput
 from app.providers import EVENT_GEOCODE_BUDGET, ProviderClient, ProviderHub
 
 
+# Inside the curated collection's review window, so results do not depend on today's date.
+NOW = datetime(2026, 9, 26, 13, 0, tzinfo=ZoneInfo("America/New_York"))
+
+
 def test_memory_cache_returns_fresh_and_stale_values():
     async def scenario():
         cache = MemoryProviderCache()
@@ -68,7 +72,7 @@ def test_missing_event_key_returns_warning_in_live_mode(monkeypatch):
         request = ItineraryInput(
             location_label="Upper West Side",
             coordinates=Coordinates(40.787, -73.9754),
-            start_at=datetime.now(ZoneInfo("America/New_York")),
+            start_at=NOW,
             available_minutes=240,
             budget_min=0,
             budget_max=40,
@@ -97,7 +101,7 @@ def test_overpass_uses_a_bounding_box_and_leaves_radius_filtering_to_engine(monk
         request = ItineraryInput(
             location_label="Upper West Side",
             coordinates=Coordinates(40.787, -73.9754),
-            start_at=datetime.now(ZoneInfo("America/New_York")),
+            start_at=NOW,
             available_minutes=240,
             budget_min=0,
             budget_max=40,
@@ -141,7 +145,7 @@ def test_overpass_uses_the_configured_fallback_after_primary_failure(monkeypatch
         request = ItineraryInput(
             location_label="Upper West Side",
             coordinates=Coordinates(40.787, -73.9754),
-            start_at=datetime.now(ZoneInfo("America/New_York")),
+            start_at=NOW,
             available_minutes=240,
             budget_min=0,
             budget_max=40,
@@ -256,7 +260,7 @@ def test_overpass_marks_branded_locations_as_chains(monkeypatch):
         request = ItineraryInput(
             location_label="Upper West Side",
             coordinates=Coordinates(40.787, -73.9754),
-            start_at=datetime.now(ZoneInfo("America/New_York")),
+            start_at=NOW,
             available_minutes=240,
             budget_min=0,
             budget_max=40,

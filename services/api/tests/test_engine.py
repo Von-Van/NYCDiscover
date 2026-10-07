@@ -1,23 +1,26 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from app.chains import is_chain_location
 from app.domain import Candidate, Coordinates, ItineraryInput
 from app.engine import (
     candidate_score,
     estimate_travel_minutes,
     generate_itineraries,
-    is_chain_location,
     timeliness_fit,
     weather_fit,
 )
 from app.fixtures import fixture_candidates, fixture_weather
+
+# A fixed early afternoon keeps results independent of when the suite runs.
+NOW = datetime(2026, 9, 26, 13, 0, tzinfo=ZoneInfo("America/New_York"))
 
 
 def request(**overrides) -> ItineraryInput:
     values = {
         "location_label": "Upper West Side",
         "coordinates": Coordinates(40.7870, -73.9754),
-        "start_at": datetime.now(ZoneInfo("America/New_York")).replace(second=0, microsecond=0),
+        "start_at": NOW,
         "available_minutes": 240,
         "budget_min": 0,
         "budget_max": 40,
@@ -266,7 +269,7 @@ def test_live_happenings_outrank_always_open_places():
         end_at=base.start_at + timedelta(minutes=115),
     )
 
-    assert timeliness_fit(tonight_only, base) > timeliness_fit(always_open, base)
+    assert timeliness_fit(tonight_only) > timeliness_fit(always_open)
     assert candidate_score(tonight_only, base, fixture_weather()) > candidate_score(
         always_open, base, fixture_weather()
     )
@@ -285,7 +288,7 @@ def test_multi_day_run_scores_below_a_one_day_happening():
         end_at=base.start_at + timedelta(days=9),
     )
 
-    assert timeliness_fit(tonight_only, base) > timeliness_fit(standing_exhibition, base)
+    assert timeliness_fit(tonight_only) > timeliness_fit(standing_exhibition)
 
 
 def test_chain_locations_score_below_independent_places():

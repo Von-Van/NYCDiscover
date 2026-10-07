@@ -5,7 +5,7 @@ import type { DiscoveryMode, GenerateRequest, GenerationResponse } from "./api-t
 import type { DiscoveryForm } from "./form";
 import { nycDate } from "./nyc-time";
 
-export interface DiscoverySession {
+interface DiscoverySession {
   mode: DiscoveryMode;
   seen: string[];
   visited: string[];

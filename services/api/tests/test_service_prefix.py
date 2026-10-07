@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.config import settings
+from app.config import Settings
 from app.main import app
 
 
@@ -14,16 +14,17 @@ def test_hosted_prefix_and_standalone_routes_share_the_same_contract():
     assert hosted.json() == standalone.json()
 
 
-def test_hosted_health_reports_fixture_storage():
+def test_hosted_health_reports_fixture_storage(monkeypatch):
+    monkeypatch.setattr("app.main.settings", Settings(fixture_mode=True, database_url="", share_signing_secret=""))
     with TestClient(app) as client:
         response = client.get("/api/healthz")
 
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "database": "postgres" if settings.database_url else "memory",
+        "database": "memory",
         "fixture_mode": True,
-        "sharing_enabled": bool(settings.database_url and settings.share_signing_secret),
+        "sharing_enabled": False,
     }
 
 

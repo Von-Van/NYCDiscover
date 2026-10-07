@@ -7,6 +7,18 @@ export function priceLabel(step: TimelineStep) {
   return `${step.details?.price_status === "verified" ? "" : "Est. "}$${step.cost_low}–${step.cost_high}`;
 }
 
+export function durationLabel(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `${hours ? `${hours}h ` : ""}${remainder ? `${remainder}m` : ""}`.trim();
+}
+
+export function confidenceLabel(confidence: number) {
+  if (confidence >= 0.82) return "High confidence";
+  if (confidence >= 0.66) return "Good confidence";
+  return "Worth verifying";
+}
+
 export function directionsUrl(step: TimelineStep, mode: TransportMode) {
   const parameters = new URLSearchParams({ api: "1", destination: `${step.coordinates.latitude},${step.coordinates.longitude}`, travelmode: { walk: "walking", bike: "bicycling", transit: "transit" }[mode] });
   return `https://www.google.com/maps/dir/?${parameters}`;

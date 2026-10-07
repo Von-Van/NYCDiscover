@@ -13,9 +13,10 @@ import { useNYCDate } from "@/lib/use-nyc-date";
 import { TodayEdition } from "./TodayEdition";
 import { TodayEvents } from "./TodayEvents";
 import { OutingView } from "./OutingView";
+import { PlanFacts, PlanTabs, TimelineStop, WeatherStrip, useStepFocus } from "./PlanTimeline";
 import { getDiscoverySession, useDiscoverySession, saveDiscoverySession, resetDiscoverySession } from "@/lib/discovery-session";
-import { fieldguideEvent, priceLabel } from "@/lib/fieldguide";
-import { nycTime, nycLongDate, nycDate } from "@/lib/nyc-time";
+import { fieldguideEvent } from "@/lib/fieldguide";
+import { nycLongDate, nycDate } from "@/lib/nyc-time";
 
 const fallbackCoordinates = { latitude: 40.787, longitude: -73.9754 };
 
@@ -25,22 +26,6 @@ function copyForm(form: DiscoveryForm): DiscoveryForm {
     coordinates: form.coordinates ? { ...form.coordinates } : null,
     moods: [...form.moods],
   };
-}
-
-function formatTime(value: string) {
-  return nycTime(value);
-}
-
-function durationLabel(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return `${hours ? `${hours}h ` : ""}${remainder ? `${remainder}m` : ""}`.trim();
-}
-
-function confidenceLabel(confidence: number) {
-  if (confidence >= 0.82) return "High confidence";
-  if (confidence >= 0.66) return "Good confidence";
-  return "Worth verifying";
 }
 
 type GenerationMode = "initial" | "update" | "regenerate";
@@ -61,8 +46,7 @@ export function DiscoveryApp() {
   const [seed, setSeed] = useState(0);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [previewStepId, setPreviewStepId] = useState<string | null>(null);
+  const focus = useStepFocus();
   const [shareUrl, setShareUrl] = useState("");
   const [shareStatus, setShareStatus] = useState<"idle" | "creating" | "ready" | "copied" | "error">("idle");
   const [shareMessage, setShareMessage] = useState("");
@@ -71,7 +55,6 @@ export function DiscoveryApp() {
   const [swapStatus, setSwapStatus] = useState("");
   const [swapError, setSwapError] = useState("");
   const mutationPending = useRef(false);
-  const timelineRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   const activePlan = useMemo(
     () => response?.plans.find((plan) => plan.id === activePlanId) ?? response?.plans[0],
@@ -82,7 +65,6 @@ export function DiscoveryApp() {
     [response],
   );
   const displayForm = committedForm ?? draftForm;
-  const activeStepId = previewStepId ?? selectedStepId;
   const busy = isUpdating || pendingOptionId !== null || shareStatus === "creating";
 
   useEffect(() => {
@@ -127,7 +109,7 @@ export function DiscoveryApp() {
     setPhase("form");
   }
 
-  async function locateMe() {
+  function locateMe() {
     setMessage("Checking your location…");
     if (!navigator.geolocation) {
       setMessage("Browser location is unavailable. Search for a neighborhood or address instead.");
@@ -222,11 +204,7 @@ export function DiscoveryApp() {
       setCommittedForm(committed);
       setDraftForm(copyForm(committed));
       setActivePlanId(result.plans[0]?.id ?? "");
-      setSelectedStepId(null);
-      setPreviewStepId(null);
-      setShareUrl("");
-      setShareStatus("idle");
-      setShareMessage("");
+      resetPlanView();
       setInspectorOpen(false);
       setErrors([]);
       setPhase("results");
@@ -294,7 +272,7 @@ export function DiscoveryApp() {
         completed_candidate_ids: continueOuting ? memory.completed : [], continue_outing: continueOuting,
         current_coordinates: currentCoordinates, current_location_label: location });
       setResponse(updated.generation); setCommittedRequest(updated.brief); setActivePlanId(updated.generation.plans[0]?.id ?? "");
-      setSelectedStepId(null); setPreviewStepId(null); setShareUrl(""); setShareStatus("idle"); setShareMessage("");
+      resetPlanView();
       const form = { ...committedForm, coordinates: updated.brief.coordinates, locationLabel: updated.brief.location_label,
         availableMinutes: updated.brief.available_minutes, budgetMax: updated.brief.budget_max };
       setCommittedForm(form); setDraftForm(copyForm(form));
@@ -309,9 +287,12 @@ export function DiscoveryApp() {
     resetDiscoverySession(); setEditionVersion((n) => n + 1); setSwapStatus("Session reset. Your visible plan is still available.");
   }
 
-  function selectTimelineStep(stepId: string) {
-    setSelectedStepId(stepId);
-    setPreviewStepId(null);
+  // A different route invalidates the selected stop and any share link made for the old one.
+  function resetPlanView() {
+    focus.clear();
+    setShareUrl("");
+    setShareStatus("idle");
+    setShareMessage("");
   }
 
   function activatePlan(planId: string) {
@@ -321,11 +302,7 @@ export function DiscoveryApp() {
     setActivePlanId(planId);
     saveDiscoverySession({ locked: session.locked, completed: [], outing: false, promptDismissed: false, feedback: false,
       saved: session.saved ? { ...session.saved, planId } : null });
-    setSelectedStepId(null);
-    setPreviewStepId(null);
-    setShareUrl("");
-    setShareStatus("idle");
-    setShareMessage("");
+    resetPlanView();
     setSwapStatus("");
     setSwapError("");
   }
@@ -351,11 +328,7 @@ export function DiscoveryApp() {
         });
       setResponse(updated);
       saveDiscoverySession({ saved: { brief: committedRequest, generation: updated, form: committedForm!, planId: activePlan.id } });
-      setSelectedStepId(null);
-      setPreviewStepId(null);
-      setShareUrl("");
-      setShareStatus("idle");
-      setShareMessage("");
+      resetPlanView();
       setSwapStatus(`${option.step.name} replaced ${previous?.name ?? "your stop"}. Route and estimates updated.`);
       return true;
     } catch (error) {
@@ -410,15 +383,6 @@ export function DiscoveryApp() {
     } finally {
       mutationPending.current = false;
     }
-  }
-
-  function selectMapStep(stepId: string) {
-    setSelectedStepId(stepId);
-    setPreviewStepId(null);
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "auto"
-      : "smooth";
-    timelineRefs.current[stepId]?.scrollIntoView({ behavior, block: "center" });
   }
 
   return (
@@ -594,14 +558,7 @@ export function DiscoveryApp() {
                 onAlternative={(location) => void remixPlan(activePlan.steps.find((s) => !session.completed.includes(s.candidate_id))?.candidate_id, true, location)}
                 onBack={() => saveDiscoverySession({ outing: false })} feedback={session.feedback} onFeedback={() => saveDiscoverySession({ feedback: true })} />}
               <div className="conditions-rail" hidden={session.outing}>
-                <div className="weather-strip">
-                  <span className="weather-mark" aria-hidden="true">{response.weather.is_wet ? "☂" : "☼"}</span>
-                  <div>
-                    <strong>{response.weather.temperature_f ? `${response.weather.temperature_f}° · ` : ""}{response.weather.summary}</strong>
-                    <span>{response.weather.precipitation_probability}% chance of precipitation</span>
-                  </div>
-                  <span className="weather-source">{response.weather.source_name}</span>
-                </div>
+                <WeatherStrip weather={response.weather} />
 
                 {response.warnings.length > 0 && (
                   <div className="warning-strip" role="status">
@@ -620,27 +577,17 @@ export function DiscoveryApp() {
                 </div>
               ) : activePlan ? (
                 <>
-                  <nav className="plan-tabs" aria-label="Choose an itinerary" hidden={session.outing}>
-                    {response.plans.map((plan, index) => (
-                      <button
-                        key={plan.id}
-                        className={activePlan.id === plan.id ? "active" : ""}
-                        aria-pressed={activePlan.id === plan.id}
-                        onClick={() => activatePlan(plan.id)}
-                        disabled={busy || session.completed.length > 0 || session.locked.some((id) => !plan.steps.some((step) => step.candidate_id === id))}
-                        title={session.locked.some((id) => !plan.steps.some((step) => step.candidate_id === id)) ? "Unlock kept stops to choose this alternative" : undefined}
-                      >
-                        <span className="plan-tab-topline">
-                          <span>Plan {String.fromCharCode(65 + index)}</span>
-                          {planLabels.get(plan.id) && <mark>{planLabels.get(plan.id)}</mark>}
-                        </span>
-                        <strong>{plan.title}</strong>
-                        <small>
-                          {durationLabel(plan.total_minutes)} · up to ${plan.total_cost_high}
-                        </small>
-                      </button>
-                    ))}
-                  </nav>
+                  <PlanTabs
+                    plans={response.plans}
+                    activePlanId={activePlan.id}
+                    labels={planLabels}
+                    onSelect={activatePlan}
+                    hidden={session.outing}
+                    disabledReason={(plan) => {
+                      if (session.locked.some((id) => !plan.steps.some((step) => step.candidate_id === id))) return "Unlock kept stops to choose this alternative";
+                      return busy || session.completed.length > 0 ? "" : null;
+                    }}
+                  />
 
                   <div className="result-grid" hidden={session.outing}>
                     <article className="timeline-card">
@@ -654,69 +601,42 @@ export function DiscoveryApp() {
                       {activePlan.introduction && <p className="plan-introduction">{activePlan.introduction}</p>}
                       {activePlan.why_today && <p className="today-reason">Why today · {activePlan.why_today.text}</p>}
                       {activePlan.prompt && !session.promptDismissed && <aside className="small-prompt"><span>A little invitation</span><p>{activePlan.prompt}</p><button className="text-button" onClick={() => saveDiscoverySession({ promptDismissed: true })}>Skip this prompt</button></aside>}
-                      <dl className="plan-facts">
-                        <div><dt>Total time</dt><dd>{durationLabel(activePlan.total_minutes)}</dd></div>
-                        <div><dt>Est. spend</dt><dd>${activePlan.total_cost_low}–${activePlan.total_cost_high}</dd></div>
-                        <div><dt>Stops</dt><dd>{activePlan.steps.length}</dd></div>
-                        <div><dt>Travel</dt><dd>{displayForm.transportMode}</dd></div>
-                      </dl>
+                      <PlanFacts plan={activePlan} transportMode={displayForm.transportMode} />
 
                       <ol className="timeline">
                         {activePlan.steps.map((step, index) => (
-                          <li
+                          <TimelineStop
                             key={step.candidate_id}
-                            ref={(node) => { timelineRefs.current[step.candidate_id] = node; }}
-                            className={activeStepId === step.candidate_id ? "active" : ""}
-                            data-stop-id={step.candidate_id}
-                            onMouseEnter={() => setPreviewStepId(step.candidate_id)}
-                            onMouseLeave={() => setPreviewStepId(null)}
-                            onFocusCapture={() => setPreviewStepId(step.candidate_id)}
-                            onBlurCapture={(event) => {
-                              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                                setPreviewStepId(null);
-                              }
-                            }}
-                          >
-                            <div className="travel-label">
-                              <span>{step.travel_before.minutes} min {step.travel_before.mode}</span>
-                              <small>{step.travel_before.distance_miles} mi estimate</small>
-                            </div>
-                            <button
-                              type="button"
-                              className="timeline-marker"
-                              aria-label={`Show stop ${index + 1}, ${step.name}, on the map`}
-                              aria-pressed={selectedStepId === step.candidate_id}
-                              onClick={() => selectTimelineStep(step.candidate_id)}
-                            >
-                              {index + 1}
-                            </button>
-                            <div className="stop-card">
-                              <div className="stop-time">
-                                <strong>{formatTime(step.start_at)}</strong>
-                                <span>to {formatTime(step.end_at)}</span>
+                            step={step}
+                            index={index}
+                            focus={focus}
+                            actions={(
+                              <div className="stop-actions">
+                                <button
+                                  type="button"
+                                  disabled={busy || !response.swap_token}
+                                  aria-pressed={session.locked.includes(step.candidate_id)}
+                                  onClick={() => saveDiscoverySession({ locked: session.locked.includes(step.candidate_id) ? session.locked.filter((id) => id !== step.candidate_id) : [...session.locked, step.candidate_id] })}
+                                >
+                                  {session.locked.includes(step.candidate_id) ? "Kept · unlock" : "Keep this stop"}
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-pressed={session.visited.includes(step.candidate_id)}
+                                  onClick={() => saveDiscoverySession({ visited: [...session.visited, step.candidate_id] })}
+                                >
+                                  {session.visited.includes(step.candidate_id) ? "Visited ✓" : "I’ve been here"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || !response.swap_token || session.completed.includes(step.candidate_id) || session.locked.includes(step.candidate_id)}
+                                  onClick={() => void remixPlan(step.candidate_id)}
+                                >
+                                  Show another idea
+                                </button>
                               </div>
-                              <div className="stop-copy">
-                                <span className="category-tag">{step.category}</span>
-                                <h3>
-                                  <button type="button" onClick={() => selectTimelineStep(step.candidate_id)}>
-                                    {step.name}
-                                  </button>
-                                </h3>
-                                {step.details?.activity && <p className="stop-activity">{step.details.activity}</p>}
-                                <p className="stop-meta">{priceLabel(step)}{step.details?.neighborhood ? ` · ${step.details.neighborhood}` : ""}</p>
-                                {step.why_today && <p className="today-reason">{step.why_today.text}</p>}
-                                {step.details?.registration && <p className="registration-note">{step.details.registration}</p>}
-                                <div className="stop-actions"><button type="button" disabled={busy || !response.swap_token} aria-pressed={session.locked.includes(step.candidate_id)} onClick={() => saveDiscoverySession({ locked: session.locked.includes(step.candidate_id) ? session.locked.filter((id) => id !== step.candidate_id) : [...session.locked, step.candidate_id] })}>{session.locked.includes(step.candidate_id) ? "Kept · unlock" : "Keep this stop"}</button><button type="button" aria-pressed={session.visited.includes(step.candidate_id)} onClick={() => saveDiscoverySession({ visited: [...session.visited, step.candidate_id] })}>{session.visited.includes(step.candidate_id) ? "Visited ✓" : "I’ve been here"}</button><button type="button" disabled={busy || !response.swap_token || session.completed.includes(step.candidate_id) || session.locked.includes(step.candidate_id)} onClick={() => void remixPlan(step.candidate_id)}>Show another idea</button></div>
-                                <details>
-                                  <summary>What to verify</summary>
-                                  <p>{confidenceLabel(step.confidence)}</p>
-                                  {step.details?.reviewed_at && <p>Field notes reviewed {step.details.reviewed_at}.</p>}
-                                  {step.estimate_notes.map((note) => <p key={note}>{note}</p>)}
-                                  {step.source_url && <a href={step.source_url} target="_blank" rel="noreferrer">Open source ↗</a>}
-                                </details>
-                              </div>
-                            </div>
-                          </li>
+                            )}
+                          />
                         ))}
                       </ol>
                       {(localDemo || response.swap_token) && (
@@ -740,10 +660,10 @@ export function DiscoveryApp() {
                     <aside className="map-column">
                       <ItineraryMap
                         plan={activePlan}
-                        activeStepId={activeStepId}
-                        selectedStepId={selectedStepId}
-                        onStepPreview={setPreviewStepId}
-                        onStepSelect={selectMapStep}
+                        activeStepId={focus.activeStepId}
+                        selectedStepId={focus.selectedStepId}
+                        onStepPreview={focus.preview}
+                        onStepSelect={focus.selectFromMap}
                       />
                       <div className="map-caption">
                         <span>NOT TURN-BY-TURN</span>
